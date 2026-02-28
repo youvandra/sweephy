@@ -137,8 +137,13 @@ export default function AdminPage() {
             <button 
               onClick={async () => {
                 if(confirm("Delete this unclaimed device?")) {
-                  await supabase.from("devices").delete().eq("id", device.id);
-                  fetchUnclaimedDevices();
+                  const { error } = await supabase.from("devices").delete().eq("id", device.id);
+                  if (error) {
+                    console.error("Delete error:", error);
+                    alert("Error deleting device: " + error.message);
+                  } else {
+                    fetchUnclaimedDevices();
+                  }
                 }
               }}
               className="w-full py-2 text-xs font-bold text-red-500 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center gap-2"
