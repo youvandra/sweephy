@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAppKitAccount } from "@reown/appkit/react";
-import { Shield, Save, AlertCircle, Clock, Percent, DollarSign, Wallet } from "lucide-react";
+import { Shield, Save, AlertCircle, Clock, Percent, DollarSign, Wallet, Key, CheckCircle2, XCircle } from "lucide-react";
 
 export default function RulesPage() {
   const { address } = useAppKitAccount();
@@ -12,9 +12,13 @@ export default function RulesPage() {
     daily_limit: 1000,
     cooldown_seconds: 60,
     slippage_tolerance: 0.5,
+    allowance_granted: false,
+    hbar_allowance_amount: 0,
   });
   const [kmsArn, setKmsArn] = useState("");
+  const [kmsPublicKey, setKmsPublicKey] = useState("");
   const [loading, setLoading] = useState(false);
+  const [allowanceLoading, setAllowanceLoading] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -24,39 +28,64 @@ export default function RulesPage() {
   async function fetchRules() {
     if (!address) return;
 
-    // Use wallet address as the unique identifier for the profile/user
-    const { data: profile } = await supabase.from("profiles").select("id").eq("wallet_address", address).single();
+    const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
     let userId = profile?.id;
-
-    if (!userId) {
-      // Create profile if it doesn't exist
-      const { data: newProfile } = await supabase.from("profiles").insert({
-        id: crypto.randomUUID(), // Mocking a UUID for the profile
-        wallet_address: address,
-      }).select().single();
-      userId = newProfile?.id;
-    }
 
     if (!userId) return;
 
     const { data: rulesData } = await supabase.from("rules").select("*").eq("user_id", userId).single();
     if (rulesData) setRules(rulesData);
 
-    const { data: keyData } = await supabase.from("wallet_keys").select("kms_arn").eq("user_id", userId).single();
-    if (keyData) setKmsArn(keyData.kms_arn);
+    const { data: keyData } = await supabase.from("wallet_keys").select("kms_arn, kms_public_key").eq("user_id", userId).single();
+    if (keyData) {
+      setKmsArn(keyData.kms_arn);
+      setKmsPublicKey(keyData.kms_public_key || "");
+    }
+  }
+
+  async function handleGrantAllowance() {
+    if (!kmsPublicKey) {
+      alert("Please provide an AWS KMS ARN and save it first to retrieve the Public Key.");
+      return;
+    }
+    setAllowanceLoading(true);
+    try {
+      // In a real Hedera app, we would use the Hashgraph SDK with WalletConnect
+      // For this PoC, we'll simulate the successful allowance grant
+      // In production: await wallet.sendTransaction(new CryptoApproveAllowance()...)
+      
+      console.log("Granting allowance to KMS Public Key:", kmsPublicKey);
+      
+      const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
+      if (profile) {
+        await supabase.from("rules").upsert({
+          user_id: profile.id,
+          allowance_granted: true,
+          hbar_allowance_amount: 1000, // Grant 1000 HBAR allowance
+          last_allowance_update: new Date().toISOString(),
+        });
+        
+        setRules(prev => ({ ...prev, allowance_granted: true, hbar_allowance_amount: 1000 }));
+        setMessage("Allowance successfully granted to KMS!");
+      }
+    } catch (err: any) {
+      alert("Failed to grant allowance: " + err.message);
+    } finally {
+      setAllowanceLoading(false);
+      setTimeout(() => setMessage(""), 3000);
+    }
   }
 
   async function handleSave() {
     if (!address) return;
     setLoading(true);
 
-    let { data: profile } = await supabase.from("profiles").select("id").eq("wallet_address", address).single();
+    let { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
     let userId = profile?.id;
 
     if (!userId) {
       const { data: newProfile } = await supabase.from("profiles").insert({
-        id: crypto.randomUUID(),
-        wallet_address: address,
+        wallet_address: address.toLowerCase(),
       }).select().single();
       userId = newProfile?.id;
     }
@@ -69,10 +98,14 @@ export default function RulesPage() {
       });
 
       if (kmsArn) {
+        // Mocking fetching public key from ARN if not present
+        const mockPublicKey = kmsPublicKey || "0x" + Math.random().toString(16).slice(2, 42);
         await supabase.from("wallet_keys").upsert({
           user_id: userId,
           kms_arn: kmsArn,
+          kms_public_key: mockPublicKey
         });
+        setKmsPublicKey(mockPublicKey);
       }
 
       setMessage("Settings saved successfully!");
@@ -165,6 +198,52 @@ export default function RulesPage() {
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-mono text-xs focus:ring-2 focus:ring-primary outline-none"
               />
             </div>
+
+            {kmsPublicKey && (
+              <div className="space-y-4 pt-4 border-t">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">KMS Public Key</label>
+                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 font-mono text-[10px] break-all text-gray-500">
+                    {kmsPublicKey}
+                  </div>
+                </div>
+
+                <div className={`p-4 rounded-xl border flex items-center justify-between ${
+                  rules.allowance_granted ? "bg-green-50 border-green-100" : "bg-amber-50 border-amber-100"
+                }`}>
+                  <div className="flex items-center gap-3">
+                    {rules.allowance_granted ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-amber-500" />
+                    )}
+                    <div>
+                      <p className="text-xs font-bold text-secondary uppercase">
+                        {rules.allowance_granted ? "Allowance Active" : "No Allowance"}
+                      </p>
+                      <p className="text-[10px] text-gray-500">
+                        {rules.allowance_granted 
+                          ? `${rules.hbar_allowance_amount} HBAR granted to KMS` 
+                          : "KMS cannot sign without allowance"}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <button 
+                    onClick={handleGrantAllowance}
+                    disabled={allowanceLoading}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                      rules.allowance_granted 
+                        ? "bg-white text-secondary border border-gray-200 hover:bg-gray-50" 
+                        : "bg-primary text-secondary shadow-lg shadow-primary/20 hover:opacity-90"
+                    }`}
+                  >
+                    {allowanceLoading ? "Granting..." : rules.allowance_granted ? "Update Allowance" : "Grant Allowance"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl flex gap-3">
               <AlertCircle className="w-5 h-5 text-blue-500 shrink-0" />
               <p className="text-[11px] text-blue-700 leading-normal">

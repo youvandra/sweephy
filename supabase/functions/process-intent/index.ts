@@ -94,10 +94,10 @@ serve(async (req) => {
       const user = device.profiles;
       const rules = user.rules;
 
-      // 5. Enforce Rules
-      if (amount > rules.max_per_swap) {
-        await logIntent(device_id, "rejected", "Max per swap exceeded");
-        return new Response(JSON.stringify({ error: "Amount exceeds max per swap limit" }), { status: 400 });
+      // 5. Enforce Allowance Rule
+      if (!rules.allowance_granted) {
+        await logIntent(device_id, "rejected", "Allowance not granted to KMS");
+        return new Response(JSON.stringify({ error: "KMS signature requires allowance. Grant allowance in dashboard rules." }), { status: 403 });
       }
 
       // Check daily limit
@@ -114,7 +114,19 @@ serve(async (req) => {
         return new Response(JSON.stringify({ error: "Daily limit exceeded" }), { status: 400 });
       }
 
-      // 6. Create Intent Record
+      // 6. Fetch Swap Pair Config (SaucerSwap)
+      const { data: pairConfig } = await supabase
+        .from("swap_pairs")
+        .select("*")
+        .eq("pair_name", pair)
+        .eq("is_active", true)
+        .single();
+
+      if (!pairConfig) {
+        return new Response(JSON.stringify({ error: "Swap pair not supported or inactive" }), { status: 400 });
+      }
+
+      // 7. Create Intent Record
       const { data: intent, error: intentError } = await supabase
         .from("intents")
         .insert({ device_id, action, pair, amount, status: "pending" })
@@ -123,17 +135,31 @@ serve(async (req) => {
 
       if (intentError) throw intentError;
 
-      // 7. Handle Signing
+      // 8. Handle Signing via AWS KMS
       if (user.wallet_keys?.kms_arn || Deno.env.get("AWS_KMS_KEY_ID")) {
         const kmsKeyId = user.wallet_keys?.kms_arn || Deno.env.get("AWS_KMS_KEY_ID")!;
-        const txHash = "0x" + Math.random().toString(16).slice(2);
+        
+        // --- SAUCERSWAP TRANSACTION LOGIC (SIMULATED FOR POC) ---
+        // 1. Fetch current price/slippage from SaucerSwap API if needed
+        // 2. Build the contract call transaction for SaucerSwap Router
+        // 3. Send the digest to AWS KMS to sign using the KMS Public Key (User's allowance)
+        // 4. Submit the signed transaction to Hedera Network
+        
+        const txHash = "0x" + Math.random().toString(16).slice(2); // Simulated Hedera TX Hash
         
         await supabase.from("intents").update({ status: "completed" }).eq("id", intent.id);
         await supabase.from("intent_logs").insert({
           intent_id: intent.id,
           tx_hash: txHash,
           signed_by: "kms",
-          details: { pair, amount, method: "KMS_CUSTODIAL", kms_key: kmsKeyId }
+          details: { 
+            pair, 
+            amount, 
+            method: "KMS_CUSTODIAL_SAUCERSWAP", 
+            kms_key: kmsKeyId,
+            pool_id: pairConfig.saucerswap_pool_id,
+            slippage: rules.slippage_tolerance
+          }
         });
 
         return new Response(JSON.stringify({ status: "success", tx_hash: txHash }));
