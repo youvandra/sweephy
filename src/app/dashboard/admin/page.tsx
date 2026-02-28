@@ -48,7 +48,7 @@ export default function AdminPage() {
       
       if (data?.is_admin) {
         setIsAdmin(true);
-        fetchUnclaimedDevices();
+        fetchAllDevices();
       } else {
         console.warn("User is not an admin according to database.");
       }
@@ -59,11 +59,10 @@ export default function AdminPage() {
     }
   }
 
-  async function fetchUnclaimedDevices() {
+  async function fetchAllDevices() {
     const { data } = await supabase
       .from("devices")
-      .select("*, pairing_codes(*)")
-      .is("user_id", null)
+      .select("*, pairing_codes(*), profiles(wallet_address)")
       .order("created_at", { ascending: false });
     setDevices(data || []);
   }
@@ -88,7 +87,7 @@ export default function AdminPage() {
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours for admin created
       });
 
-      fetchUnclaimedDevices();
+      fetchAllDevices();
       setNewDevice({ id: device.id, secret, pairingCode: code });
     } catch (err: any) {
       alert(err.message);
@@ -105,7 +104,7 @@ export default function AdminPage() {
       console.error("Delete error:", error);
       alert("Error deleting device: " + error.message);
     } else {
-      fetchUnclaimedDevices();
+      fetchAllDevices();
     }
     setDeviceToDelete(null);
   }
@@ -255,21 +254,34 @@ export default function AdminPage() {
               <div className="p-3 bg-gray-50 rounded-xl text-secondary">
                 <Tablet className="w-6 h-6" />
               </div>
-              <span className="text-[10px] font-bold uppercase px-2 py-1 bg-amber-100 text-amber-700 rounded">Unclaimed</span>
+              <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded ${
+                device.user_id ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+              }`}>
+                {device.user_id ? "Claimed" : "Unclaimed"}
+              </span>
             </div>
             
             <div>
               <p className="text-xs text-gray-400 font-bold uppercase">Device ID</p>
               <p className="text-sm font-mono truncate">{device.id}</p>
+              {device.profiles?.wallet_address && (
+                <p className="text-[10px] text-gray-400 mt-1 truncate">Owner: {device.profiles.wallet_address}</p>
+              )}
             </div>
 
-            <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
+            <div className={`p-4 rounded-xl border ${
+              device.is_paired ? "bg-green-50 border-green-100" : "bg-primary/5 border-primary/10"
+            }`}>
               <div className="flex items-center gap-2 mb-1">
-                <Key className="w-3 h-3 text-primary" />
-                <p className="text-xs font-bold text-secondary uppercase">Active Pairing Code</p>
+                <Key className={`w-3 h-3 ${device.is_paired ? "text-green-500" : "text-primary"}`} />
+                <p className="text-xs font-bold text-secondary uppercase">
+                  {device.is_paired ? "Status" : "Active Pairing Code"}
+                </p>
               </div>
-              <p className="text-xl font-black text-secondary tracking-widest">
-                {device.pairing_codes?.[0]?.code || "NONE"}
+              <p className={`text-xl font-black tracking-widest ${
+                device.is_paired ? "text-green-600" : "text-secondary"
+              }`}>
+                {device.is_paired ? "PAIRED" : (device.pairing_codes?.[0]?.code || "NONE")}
               </p>
             </div>
 
