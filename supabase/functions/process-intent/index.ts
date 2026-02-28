@@ -34,8 +34,11 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Unauthorized device" }), { status: 401 });
     }
 
-    // Update last seen
-    await supabase.from("devices").update({ last_seen: new Date().toISOString() }).eq("id", device_id);
+    // Update last seen (Heartbeat)
+    await supabase.from("devices").update({ 
+      last_seen: new Date().toISOString(),
+      status: device.status === "disabled" ? "disabled" : "online"
+    }).eq("id", device_id);
 
     // 2. Handle Status Check
     if (action === "status") {
@@ -43,7 +46,8 @@ serve(async (req) => {
       return new Response(JSON.stringify({ 
         is_paired: device.is_paired, 
         status: device.status,
-        pairing_code: pairingCode?.code || null
+        pairing_code: pairingCode?.code || null,
+        owner: device.user_id ? "paired" : "none"
       }));
     }
 

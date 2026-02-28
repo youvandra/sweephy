@@ -55,10 +55,27 @@ export default function DevicesPage() {
         .eq("used", false)
         .single();
 
-      if (codeError || !codeData) throw new Error("Device not detected or invalid code");
-      if (new Date(codeData.expires_at) < new Date()) throw new Error("Pairing code expired");
+      if (codeError || !codeData) throw new Error("Pairing code invalid or already used.");
+      if (new Date(codeData.expires_at) < new Date()) throw new Error("This pairing code has expired.");
 
-      // 2. Claim the device
+      const device = codeData.devices;
+
+      // 2. Check if device is already paired to someone else
+      if (device.is_paired || device.user_id) {
+        throw new Error("This device is already paired to another account.");
+      }
+
+      // 3. Heartbeat Check: Ensure device is actually turned on and polling
+      // Device updates 'last_seen' when polling for status or prices
+      const lastSeen = new Date(device.last_seen);
+      const now = new Date();
+      const diffSeconds = (now.getTime() - lastSeen.getTime()) / 1000;
+
+      if (!device.last_seen || diffSeconds > 30) {
+        throw new Error("Device not detected. Please turn on your Sweephy device and wait for the pairing code to appear.");
+      }
+
+      // 4. Claim the device
       const { error: claimError } = await supabase
         .from("devices")
         .update({ 
