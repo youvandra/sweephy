@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Tablet, ShieldAlert, Key, Hash, AlertTriangle, X } from "lucide-react";
+import { Plus, Trash2, Tablet, ShieldAlert, Key, Hash, AlertTriangle, X, Copy, Check, Info } from "lucide-react";
 import { useAppKitAccount } from "@reown/appkit/react";
 
 export default function AdminPage() {
@@ -12,10 +12,18 @@ export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [checking, setChecking] = useState(true);
   const [deviceToDelete, setDeviceToDelete] = useState<any>(null);
+  const [newDevice, setNewDevice] = useState<{ id: string; secret: string; pairingCode: string } | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
     if (address) checkAdmin();
   }, [address]);
+
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   async function checkAdmin() {
     if (!address) {
@@ -81,7 +89,7 @@ export default function AdminPage() {
       });
 
       fetchUnclaimedDevices();
-      alert(`Device Ready! \nID: ${device.id}\nSecret: ${secret}\nPairing Code: ${code}`);
+      setNewDevice({ id: device.id, secret, pairingCode: code });
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -142,6 +150,84 @@ export default function AdminPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Device Success Modal */}
+      {newDevice && (
+        <div className="fixed inset-0 bg-secondary/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 text-secondary">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 space-y-6">
+            <div className="flex flex-col items-center text-center space-y-2">
+              <div className="p-4 bg-primary/10 rounded-2xl text-primary">
+                <ShieldAlert className="w-10 h-10" />
+              </div>
+              <h3 className="text-2xl font-bold">Device Provisioned!</h3>
+              <p className="text-gray-500 text-sm">
+                Copy these credentials to your ESP32 firmware now. The secret will <strong>never</strong> be shown again.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Device ID</label>
+                <div className="flex gap-2">
+                  <div className="flex-1 bg-gray-50 p-3 rounded-xl border border-gray-100 font-mono text-xs break-all">
+                    {newDevice.id}
+                  </div>
+                  <button 
+                    onClick={() => copyToClipboard(newDevice.id, 'id')}
+                    className="p-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors border border-gray-100"
+                  >
+                    {copiedField === 'id' ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-gray-400" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Device Secret</label>
+                <div className="flex gap-2">
+                  <div className="flex-1 bg-amber-50 p-3 rounded-xl border border-amber-100 font-mono text-sm font-bold text-amber-700">
+                    {newDevice.secret}
+                  </div>
+                  <button 
+                    onClick={() => copyToClipboard(newDevice.secret, 'secret')}
+                    className="p-3 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors border border-amber-100"
+                  >
+                    {copiedField === 'secret' ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-amber-600" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Pairing Code</label>
+                <div className="flex gap-2">
+                  <div className="flex-1 bg-primary/5 p-3 rounded-xl border border-primary/10 font-black text-xl text-center tracking-widest">
+                    {newDevice.pairingCode}
+                  </div>
+                  <button 
+                    onClick={() => copyToClipboard(newDevice.pairingCode, 'code')}
+                    className="p-3 bg-primary/5 hover:bg-primary/10 rounded-xl transition-colors border border-primary/10"
+                  >
+                    {copiedField === 'code' ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-primary" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 p-4 rounded-2xl flex gap-3 border border-blue-100">
+              <Info className="w-5 h-5 text-blue-500 shrink-0" />
+              <p className="text-[11px] text-blue-700 leading-relaxed">
+                Paste the <strong>Device ID</strong> and <strong>Secret</strong> into your <code>sweephy.ino</code> file. Use the <strong>Pairing Code</strong> on the user's dashboard to link the device.
+              </p>
+            </div>
+
+            <button 
+              onClick={() => setNewDevice(null)}
+              className="w-full py-4 rounded-2xl font-bold bg-secondary text-white hover:bg-secondary/90 transition-all shadow-lg shadow-secondary/20"
+            >
+              I've saved the credentials
+            </button>
           </div>
         </div>
       )}
