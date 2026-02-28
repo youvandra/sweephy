@@ -28,7 +28,7 @@ export default function RulesPage() {
   async function fetchRules() {
     if (!address) return;
 
-    const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address as string).limit(1).maybeSingle();
     let userId = profile?.id;
 
     if (!userId) return;
@@ -44,6 +44,10 @@ export default function RulesPage() {
   }
 
   async function handleGrantAllowance() {
+    if (!address) {
+      alert("Please connect your wallet first.");
+      return;
+    }
     if (!kmsPublicKey) {
       alert("Please provide an AWS KMS ARN and save it first to retrieve the Public Key.");
       return;
@@ -56,7 +60,7 @@ export default function RulesPage() {
       
       console.log("Granting allowance to KMS Public Key:", kmsPublicKey);
       
-      const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
+      const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address as string).limit(1).maybeSingle();
       if (profile) {
         await supabase.from("rules").upsert({
           user_id: profile.id,
@@ -80,12 +84,12 @@ export default function RulesPage() {
     if (!address) return;
     setLoading(true);
 
-    let { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
+    let { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address as string).limit(1).maybeSingle();
     let userId = profile?.id;
 
     if (!userId) {
       const { data: newProfile } = await supabase.from("profiles").insert({
-        wallet_address: address.toLowerCase(),
+        wallet_address: (address as string).toLowerCase(),
       }).select().single();
       userId = newProfile?.id;
     }
