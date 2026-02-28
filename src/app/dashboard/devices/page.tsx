@@ -13,7 +13,13 @@ export default function DevicesPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (address) fetchDevices();
+    if (address) {
+      fetchDevices();
+      
+      // Set up polling to keep device statuses (online/offline) fresh
+      const interval = setInterval(fetchDevices, 10000); // every 10 seconds
+      return () => clearInterval(interval);
+    }
   }, [address]);
 
   async function getOrCreateProfile() {
@@ -178,7 +184,7 @@ export default function DevicesPage() {
               <div className="flex items-center gap-4 text-xs text-gray-500 mb-6">
                 <div className="flex items-center gap-1">
                   <Activity className="w-3 h-3" />
-                  Last seen: {device.last_seen ? new Date(device.last_seen).toLocaleDateString() : 'Never'}
+                  Last seen: {device.last_seen ? new Date(device.last_seen).toLocaleTimeString() : 'Never'}
                 </div>
               </div>
 
@@ -208,6 +214,18 @@ export default function DevicesPage() {
           </div>
         ))}
       </div>
+
+      {devices.length === 0 && !isAdding && (
+        <div className="p-20 text-center flex flex-col items-center gap-4 bg-white rounded-2xl border border-dashed border-gray-200">
+          <div className="p-4 bg-gray-50 rounded-full">
+            <Tablet className="w-8 h-8 text-gray-300" />
+          </div>
+          <div>
+            <p className="text-secondary font-bold">No devices paired yet</p>
+            <p className="text-gray-500 text-sm">Click "Add Device" to bind your ESP32 hardware.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
