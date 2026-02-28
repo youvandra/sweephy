@@ -20,6 +20,9 @@
 # production
 /build
 
+#device
+/device/
+
 # misc
 .DS_Store
 *.pem
