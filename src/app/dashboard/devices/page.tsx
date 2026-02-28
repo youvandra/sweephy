@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, RotateCw, Trash2, Power, Shield, Tablet, Activity } from "lucide-react";
+import { Plus, RotateCw, Trash2, Power, Shield, Tablet, Activity, AlertTriangle } from "lucide-react";
 import { useAppKitAccount } from "@reown/appkit/react";
 
 export default function DevicesPage() {
@@ -11,6 +11,7 @@ export default function DevicesPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [pairingCodeInput, setPairingCodeInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [deviceToDelete, setDeviceToDelete] = useState<any>(null);
 
   useEffect(() => {
     if (address) {
@@ -113,15 +114,59 @@ export default function DevicesPage() {
     fetchDevices();
   }
 
-  async function deleteDevice(id: string) {
-    if (confirm("Are you sure? This cannot be undone.")) {
-      await supabase.from("devices").delete().eq("id", id);
+  async function confirmDelete() {
+    if (!deviceToDelete) return;
+    
+    const { error } = await supabase.from("devices").delete().eq("id", deviceToDelete.id);
+    if (error) {
+      alert("Error deleting device: " + error.message);
+    } else {
       fetchDevices();
     }
+    setDeviceToDelete(null);
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* Delete Confirmation Modal */}
+      {deviceToDelete && (
+        <div className="fixed inset-0 bg-secondary/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="p-4 bg-red-50 rounded-2xl text-red-500">
+                <AlertTriangle className="w-10 h-10" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-secondary">Remove Device?</h3>
+                <p className="text-gray-500 text-sm mt-2 leading-relaxed">
+                  This will unbind <strong>{deviceToDelete.name}</strong> from your wallet. You will need a new pairing code to reconnect it.
+                </p>
+              </div>
+              
+              <div className="bg-gray-50 p-4 rounded-xl w-full border border-gray-100">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Device ID</p>
+                <p className="text-xs font-mono text-secondary truncate">{deviceToDelete.id}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 w-full pt-4">
+                <button 
+                  onClick={() => setDeviceToDelete(null)}
+                  className="py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmDelete}
+                  className="py-3 rounded-xl font-bold bg-red-500 text-white hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-secondary">Device Management</h1>
@@ -204,7 +249,7 @@ export default function DevicesPage() {
                   Rotate
                 </button>
                 <button 
-                  onClick={() => deleteDevice(device.id)}
+                  onClick={() => setDeviceToDelete(device)}
                   className="p-2 rounded-lg bg-gray-50 hover:bg-red-50 text-red-600 transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
