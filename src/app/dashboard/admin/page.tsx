@@ -17,13 +17,32 @@ export default function AdminPage() {
   }, [address]);
 
   async function checkAdmin() {
-    setChecking(true);
-    const { data } = await supabase.from("profiles").select("is_admin").eq("wallet_address", address).single();
-    if (data?.is_admin) {
-      setIsAdmin(true);
-      fetchUnclaimedDevices();
+    if (!address) {
+      setChecking(false);
+      return;
     }
-    setChecking(false);
+    setChecking(true);
+    try {
+      // Normalize address to lowercase to avoid case-sensitivity issues
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("is_admin")
+        .ilike("wallet_address", address)
+        .single();
+      
+      if (error) {
+        console.error("Error checking admin status:", error);
+      }
+      
+      if (data?.is_admin) {
+        setIsAdmin(true);
+        fetchUnclaimedDevices();
+      }
+    } catch (err) {
+      console.error("Unexpected error in checkAdmin:", err);
+    } finally {
+      setChecking(false);
+    }
   }
 
   async function fetchUnclaimedDevices() {

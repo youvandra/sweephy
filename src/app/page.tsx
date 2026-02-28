@@ -29,11 +29,15 @@ export default function Home() {
     async function syncProfile() {
       if (isConnected && address) {
         // Sync wallet address with Supabase
-        const { data: profile } = await supabase.from("profiles").select("id").eq("wallet_address", address).single();
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id")
+          .ilike("wallet_address", address)
+          .single();
         
         if (!profile) {
           await supabase.from("profiles").insert({
-            wallet_address: address,
+            wallet_address: address.toLowerCase(), // Store lowercase
           });
         }
         
