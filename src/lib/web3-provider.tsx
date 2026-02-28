@@ -11,7 +11,7 @@ const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID || '8e394f4a38575a02e
 const metadata = {
   name: 'Sweephy',
   description: '1-Tap Swap for ESP32',
-  url: 'https://sweephy.com',
+  url: typeof window !== 'undefined' ? window.location.origin : 'https://sweephy.com',
   icons: ['https://avatars.githubusercontent.com/u/37784886']
 }
 

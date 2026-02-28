@@ -23,20 +23,25 @@ export default function AdminPage() {
     }
     setChecking(true);
     try {
-      // Normalize address to lowercase to avoid case-sensitivity issues
+      console.log("Checking admin status for address:", address);
       const { data, error } = await supabase
         .from("profiles")
         .select("is_admin")
         .ilike("wallet_address", address)
-        .single();
+        .limit(1)
+        .maybeSingle();
       
       if (error) {
-        console.error("Error checking admin status:", error);
+        console.error("Supabase error checking admin status:", error);
       }
+      
+      console.log("Admin check result:", data);
       
       if (data?.is_admin) {
         setIsAdmin(true);
         fetchUnclaimedDevices();
+      } else {
+        console.warn("User is not an admin according to database.");
       }
     } catch (err) {
       console.error("Unexpected error in checkAdmin:", err);

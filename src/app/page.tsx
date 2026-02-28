@@ -28,20 +28,31 @@ export default function Home() {
   useEffect(() => {
     async function syncProfile() {
       if (isConnected && address) {
-        // Sync wallet address with Supabase
+        // Normalize address to lowercase
+        const normalizedAddress = address.toLowerCase();
+
+        // Sync wallet address with Supabase (Case-insensitive)
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id")
-          .ilike("wallet_address", address)
-          .single();
+          .select("id, is_admin")
+          .ilike("wallet_address", normalizedAddress)
+          .limit(1)
+          .maybeSingle();
         
         if (!profile) {
+          // New user, create profile and go to dashboard
           await supabase.from("profiles").insert({
-            wallet_address: address.toLowerCase(), // Store lowercase
+            wallet_address: normalizedAddress,
           });
+          router.push('/dashboard');
+        } else {
+          // Existing user, check admin status for redirect
+          if (profile.is_admin) {
+            router.push('/dashboard/admin');
+          } else {
+            router.push('/dashboard');
+          }
         }
-        
-        router.push('/dashboard')
       }
     }
     syncProfile();

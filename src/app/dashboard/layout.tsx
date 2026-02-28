@@ -25,8 +25,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [isConnected, router, address])
 
   async function checkAdminStatus() {
-    const { data } = await supabase.from("profiles").select("is_admin").eq("wallet_address", address).single();
-    if (data?.is_admin) setIsAdmin(true);
+    if (!address) return;
+    const { data } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .ilike("wallet_address", address)
+      .limit(1)
+      .maybeSingle();
+    
+    if (data?.is_admin) {
+      setIsAdmin(true);
+      // If the user is an admin and tries to access the general dashboard, send them to admin page
+      if (pathname === '/dashboard') {
+        router.push('/dashboard/admin');
+      }
+    }
   }
 
   const navItems = [
@@ -37,8 +50,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { icon: ShieldCheck, label: "Audit Logs", href: "/dashboard/audit" },
   ];
 
+  // For Admins, we might want to prioritize the Admin Panel or hide the user dashboard
   if (isAdmin) {
-    navItems.push({ icon: ShieldAlert, label: "Admin Panel", href: "/dashboard/admin" });
+    // Insert Admin Panel at the top for Admins
+    navItems.unshift({ icon: ShieldAlert, label: "Admin Panel", href: "/dashboard/admin" });
   }
 
   return (
