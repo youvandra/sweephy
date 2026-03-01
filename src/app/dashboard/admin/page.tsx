@@ -60,10 +60,20 @@ export default function AdminPage() {
   }
 
   async function fetchAllDevices() {
-    const { data } = await supabase
+    // Admins should see ALL devices. 
+    // We explicitly select profiles(wallet_address) to show ownership.
+    const { data, error } = await supabase
       .from("devices")
-      .select("*, pairing_codes(*), profiles(wallet_address)")
+      .select(`
+        *, 
+        pairing_codes(*), 
+        profiles!devices_user_id_fkey (
+          wallet_address
+        )
+      `)
       .order("created_at", { ascending: false });
+    
+    if (error) console.error("Error fetching devices:", error);
     setDevices(data || []);
   }
 
@@ -265,7 +275,10 @@ export default function AdminPage() {
               <p className="text-xs text-gray-400 font-bold uppercase">Device ID</p>
               <p className="text-sm font-mono truncate">{device.id}</p>
               {device.profiles?.wallet_address && (
-                <p className="text-[10px] text-gray-400 mt-1 truncate">Owner: {device.profiles.wallet_address}</p>
+                <div className="mt-2 p-2 bg-blue-50 rounded-lg border border-blue-100">
+                  <p className="text-[10px] text-blue-500 font-bold uppercase">Owned By</p>
+                  <p className="text-[10px] text-blue-700 font-mono truncate">{device.profiles.wallet_address}</p>
+                </div>
               )}
             </div>
 
