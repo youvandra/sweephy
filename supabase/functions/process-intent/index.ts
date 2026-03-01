@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts";
+import { encode as hexEncode } from "https://deno.land/std@0.168.0/encoding/hex.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -8,11 +10,23 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 interface SwapIntent {
   device_id: string;
-  secret: string;
-  action: "swap" | "pair" | "status";
-  pair?: string;
-  amount?: number;
-  pairing_code?: string;
+  payload: string; // JSON string containing action, pair, amount, timestamp
+  signature: string; // HMAC-SHA256 signature of payload using device_secret
+}
+
+async function verifySignature(payload: string, signature: string, secret: string): Promise<boolean> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+  
+  const signatureBytes = new Uint8Array(signature.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+  const payloadBytes = new TextEncoder().encode(payload);
+  
+  return await crypto.subtle.verify("HMAC", key, signatureBytes, payloadBytes);
 }
 
 serve(async (req) => {
@@ -21,17 +35,37 @@ serve(async (req) => {
   }
 
   try {
-    const { device_id, secret, action, pair, amount, pairing_code }: SwapIntent = await req.json();
+    const { device_id, payload, signature }: SwapIntent = await req.json();
 
-    // 1. Basic Device Check
+    if (!device_id || !payload || !signature) {
+      return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
+    }
+
+    // 1. Fetch Device & Secret
     const { data: device, error: deviceError } = await supabase
       .from("devices")
       .select("*, profiles(*, rules(*), wallet_keys(*)), pairing_codes(*)")
       .eq("id", device_id)
       .single();
 
-    if (deviceError || !device || device.secret_hash !== secret) {
-      return new Response(JSON.stringify({ error: "Unauthorized device" }), { status: 401 });
+    if (deviceError || !device) {
+      return new Response(JSON.stringify({ error: "Device not found" }), { status: 404 });
+    }
+
+    // 2. Verify HMAC Signature
+    const isValid = await verifySignature(payload, signature, device.secret_hash);
+    if (!isValid) {
+      await logIntent(device_id, "rejected", "Invalid HMAC signature");
+      return new Response(JSON.stringify({ error: "Invalid signature. Device secret mismatch." }), { status: 401 });
+    }
+
+    const data = JSON.parse(payload);
+    const { action, pair, amount, timestamp, pairing_code } = data;
+
+    // 3. Replay Protection (Check timestamp within 60s window)
+    const now = Date.now();
+    if (Math.abs(now - timestamp) > 60000) {
+      return new Response(JSON.stringify({ error: "Request expired (Replay protection)" }), { status: 400 });
     }
 
     // Update last seen (Heartbeat)
@@ -40,7 +74,7 @@ serve(async (req) => {
       status: device.status === "disabled" ? "disabled" : "online"
     }).eq("id", device_id);
 
-    // 2. Handle Status Check
+    // 4. Handle Status Check
     if (action === "status") {
       const pairingCode = device.pairing_codes?.find((c: any) => !c.used && new Date(c.expires_at) > new Date());
       return new Response(JSON.stringify({ 
