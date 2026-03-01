@@ -24,16 +24,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.push('/')
     } else if (address) {
       checkAdminStatus();
-      try {
-        // Convert EVM address to Hedera Account ID
-        // Note: This is a local conversion assuming the address is an alias or mapped. 
-        // In a real app, you might query the mirror node for the precise 0.0.xxx ID
-        const id = AccountId.fromEvmAddress(address);
-        setHederaId(id.toString());
-      } catch (e) {
-        // Fallback or ignore if conversion fails (e.g. if not a valid EVM for Hedera yet)
-        console.warn("Could not convert address to Hedera ID", e);
-      }
+      
+      // Fetch precise Hedera Account ID from Mainnet Mirror Node
+      fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${address}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.account) {
+            setHederaId(data.account);
+          }
+        })
+        .catch(err => {
+          console.warn("Failed to resolve Hedera ID from Mirror Node:", err);
+          // Fallback: try local conversion if API fails
+          try {
+            const id = AccountId.fromEvmAddress(address);
+            setHederaId(id.toString());
+          } catch (e) { /* ignore */ }
+        });
     }
   }, [isConnected, router, address])
 
