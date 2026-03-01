@@ -19,12 +19,23 @@ export default function Dashboard() {
   useEffect(() => {
     if (address) {
       fetchData();
+      
+      // Real-time subscription for updates
+      const subscription = supabase
+        .channel('dashboard-stats')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'intents' }, () => fetchData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, () => fetchData())
+        .subscribe();
+      
+      return () => {
+        supabase.removeChannel(subscription);
+      };
     }
   }, [address]);
 
   async function getProfileId() {
     if (!address) return null;
-    const { data } = await supabase.from("profiles").select("id").eq("wallet_address", address).single();
+    const { data } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
     return data?.id;
   }
 
@@ -32,43 +43,74 @@ export default function Dashboard() {
     const userId = await getProfileId();
     if (!userId) return;
 
-    // Fetch devices for this user
-    const { data: devices } = await supabase
+    // 1. Fetch Active Devices
+    const { count: activeDevices } = await supabase
       .from("devices")
-      .select("id")
+      .select("id", { count: 'exact', head: true })
       .eq("user_id", userId)
       .eq("status", "online");
 
-    // Fetch intents for devices belonging to this user
-    const { data: intents } = await supabase
+    // 2. Fetch Today's Intents (for Daily Swaps & Volume)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const { data: todaysIntents } = await supabase
       .from("intents")
-      .select("amount, status, created_at, devices!inner(user_id)")
+      .select("amount, status, devices!inner(user_id)")
       .eq("devices.user_id", userId)
-      .gte("created_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString());
+      .gte("created_at", today.toISOString());
 
-    setStats({
-      activeDevices: devices?.length || 0,
-      dailySwaps: intents?.filter(i => i.status === "completed").length || 0,
-      pendingIntents: intents?.filter(i => i.status === "pending").length || 0,
-      totalVolume: intents?.reduce((sum, i) => sum + Number(i.amount), 0) || 0,
-    });
+    const dailySwaps = todaysIntents?.filter(i => i.status === "completed").length || 0;
+    const pendingIntents = todaysIntents?.filter(i => i.status === "pending").length || 0;
+    const dailyVolume = todaysIntents?.filter(i => i.status === "completed").reduce((sum, i) => sum + Number(i.amount), 0) || 0;
 
-    // Fetch recent intents for this user's devices
+    // 3. Fetch Recent Activity
     const { data: recent } = await supabase
       .from("intents")
       .select("*, devices!inner(name, user_id)")
       .eq("devices.user_id", userId)
       .order("created_at", { ascending: false })
       .limit(5);
+
+    setStats({
+      activeDevices: activeDevices || 0,
+      dailySwaps,
+      pendingIntents,
+      totalVolume: dailyVolume,
+    });
     
     setRecentIntents(recent || []);
   }
 
   const statCards = [
-    { label: "Active Devices", value: stats.activeDevices, icon: Tablet, color: "bg-blue-500" },
-    { label: "Daily Swaps", value: stats.dailySwaps, icon: TrendingUp, color: "bg-primary" },
-    { label: "Pending Intents", value: stats.pendingIntents, icon: Activity, color: "bg-amber-500" },
-    { label: "Daily Volume", value: `$${stats.totalVolume}`, icon: ArrowUpRight, color: "bg-indigo-500" },
+    { 
+      label: "Active Devices", 
+      value: stats.activeDevices, 
+      icon: Tablet, 
+      color: "bg-blue-500",
+      desc: "Online now"
+    },
+    { 
+      label: "Daily Swaps", 
+      value: stats.dailySwaps, 
+      icon: TrendingUp, 
+      color: "bg-green-500",
+      desc: "Completed today"
+    },
+    { 
+      label: "Pending Intents", 
+      value: stats.pendingIntents, 
+      icon: Activity, 
+      color: "bg-amber-500",
+      desc: "Awaiting signature"
+    },
+    { 
+      label: "Daily Volume", 
+      value: `${stats.totalVolume.toLocaleString()} ℏ`, 
+      icon: ArrowUpRight, 
+      color: "bg-indigo-500",
+      desc: "HBAR Traded today"
+    },
   ];
 
   return (
@@ -78,13 +120,14 @@ export default function Dashboard() {
         {statCards.map((card) => {
           const Icon = card.icon;
           return (
-            <div key={card.label} className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4">
-              <div className={`${card.color} p-3 rounded-lg text-white`}>
-                <Icon className="w-6 h-6" />
-              </div>
+            <div key={card.label} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-start justify-between group hover:shadow-md transition-all">
               <div>
-                <p className="text-sm text-gray-500">{card.label}</p>
-                <p className="text-2xl font-bold text-secondary">{card.value}</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{card.label}</p>
+                <p className="text-3xl font-black text-secondary mb-1">{card.value}</p>
+                <p className="text-[10px] text-gray-400 font-medium">{card.desc}</p>
+              </div>
+              <div className={`${card.color} p-3 rounded-xl text-white shadow-lg shadow-gray-200 group-hover:scale-110 transition-transform`}>
+                <Icon className="w-5 h-5" />
               </div>
             </div>
           );
