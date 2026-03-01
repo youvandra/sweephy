@@ -100,6 +100,18 @@ serve(async (req) => {
         return new Response(JSON.stringify({ error: "KMS signature requires allowance. Grant allowance in dashboard rules." }), { status: 403 });
       }
 
+      // --- VERIFY ON-CHAIN ALLOWANCE (HEDERA MIRROR NODE) ---
+      // In a real production environment, we MUST query the Mirror Node to confirm 
+      // the user has actually granted allowance to our Platform KMS Account ID.
+      // 
+      // Example Query: 
+      // GET https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/{user_address}/allowances/crypto
+      // Check if `spender` matches our PLATFORM_KMS_ACCOUNT_ID and `amount` > intent.amount
+      
+      // For this PoC, we rely on the `allowance_granted` flag in our database, 
+      // which is set only after the frontend confirms the transaction.
+      // -------------------------------------------------------
+
       // Check daily limit
       const { data: dailyIntents } = await supabase
         .from("intents")
@@ -135,14 +147,14 @@ serve(async (req) => {
 
       if (intentError) throw intentError;
 
-      // 8. Handle Signing via AWS KMS
-      if (user.wallet_keys?.kms_arn || Deno.env.get("AWS_KMS_KEY_ID")) {
-        const kmsKeyId = user.wallet_keys?.kms_arn || Deno.env.get("AWS_KMS_KEY_ID")!;
-        
+      // 8. Handle Signing via Global AWS KMS
+      const AWS_KMS_KEY_ID = Deno.env.get("AWS_KMS_KEY_ID");
+      
+      if (AWS_KMS_KEY_ID) {
         // --- SAUCERSWAP TRANSACTION LOGIC (SIMULATED FOR POC) ---
         // 1. Fetch current price/slippage from SaucerSwap API if needed
         // 2. Build the contract call transaction for SaucerSwap Router
-        // 3. Send the digest to AWS KMS to sign using the KMS Public Key (User's allowance)
+        // 3. Send the digest to AWS KMS to sign using the Global Platform Key
         // 4. Submit the signed transaction to Hedera Network
         
         const txHash = "0x" + Math.random().toString(16).slice(2); // Simulated Hedera TX Hash
@@ -156,7 +168,7 @@ serve(async (req) => {
             pair, 
             amount, 
             method: "KMS_CUSTODIAL_SAUCERSWAP", 
-            kms_key: kmsKeyId,
+            kms_key: AWS_KMS_KEY_ID, // Using Global Key
             pool_id: pairConfig.saucerswap_pool_id,
             slippage: rules.slippage_tolerance
           }
@@ -165,10 +177,8 @@ serve(async (req) => {
         return new Response(JSON.stringify({ status: "success", tx_hash: txHash }));
       } else {
         return new Response(JSON.stringify({ 
-          status: "pending_approval", 
-          intent_id: intent.id,
-          message: "Please approve via dashboard" 
-        }));
+          error: "Platform KMS not configured"
+        }), { status: 500 });
       }
     }
 

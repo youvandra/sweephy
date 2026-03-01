@@ -9,18 +9,31 @@ import { usePathname } from "next/navigation";
 import { useAppKitAccount, useAppKit } from '@reown/appkit/react'
 import { useRouter } from 'next/navigation'
 
+import { AccountId } from "@hashgraph/sdk";
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isConnected, address } = useAppKitAccount()
   const { open } = useAppKit()
   const router = useRouter()
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [hederaId, setHederaId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isConnected) {
       router.push('/')
     } else if (address) {
       checkAdminStatus();
+      try {
+        // Convert EVM address to Hedera Account ID
+        // Note: This is a local conversion assuming the address is an alias or mapped. 
+        // In a real app, you might query the mirror node for the precise 0.0.xxx ID
+        const id = AccountId.fromEvmAddress(address);
+        setHederaId(id.toString());
+      } catch (e) {
+        // Fallback or ignore if conversion fails (e.g. if not a valid EVM for Hedera yet)
+        console.warn("Could not convert address to Hedera ID", e);
+      }
     }
   }, [isConnected, router, address])
 
@@ -108,8 +121,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </h2>
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium text-secondary">{address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Connecting...'}</p>
-              <p className="text-xs text-gray-500">Production Mode</p>
+              <p className="text-sm font-medium text-secondary">
+                {hederaId ? hederaId : (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Connecting...')}
+              </p>
+              <p className="text-xs text-gray-500">Hedera Mainnet</p>
             </div>
             <div className="w-10 h-10 bg-primary/20 rounded-full flex items-center justify-center text-primary font-bold">
               {address?.[0]?.toUpperCase() || 'W'}
