@@ -30,11 +30,7 @@ serve(async (req) => {
       .eq("id", device_id)
       .single();
 
-    if (deviceError || !device) {
-      return new Response(JSON.stringify({ error: "Device not found" }), { status: 404 });
-    }
-
-    if (device.secret_hash !== secret) {
+    if (deviceError || !device || device.secret_hash !== secret) {
       return new Response(JSON.stringify({ error: "Unauthorized device" }), { status: 401 });
     }
 
