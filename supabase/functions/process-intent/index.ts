@@ -60,7 +60,13 @@ serve(async (req) => {
     }
 
     const data = JSON.parse(payload);
-    const { action, pair, amount, timestamp, pairing_code } = data;
+    const { action, pair, timestamp, pairing_code } = data;
+    
+    // Use amount from User Rules instead of payload (device doesn't decide amount)
+    let amount = 0;
+    if (action === "swap") {
+      amount = Number(device.profiles.rules.swap_amount) || 50; // Fallback to 50 if rule missing
+    }
 
     // 3. Replay Protection (Check timestamp within 60s window)
     const now = Date.now();

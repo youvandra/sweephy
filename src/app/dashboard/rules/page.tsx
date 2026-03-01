@@ -19,6 +19,7 @@ export default function RulesPage() {
   const { walletProvider } = useAppKitProvider<Provider>("eip155"); // Get WalletConnect provider
   
   const [rules, setRules] = useState({
+    swap_amount: 50, // Default per-click amount
     max_per_swap: 100,
     daily_limit: 1000,
     cooldown_seconds: 60,
@@ -171,13 +172,33 @@ export default function RulesPage() {
             Swap Enforcement
           </h3>
           
-          <RuleInput 
-            label="Max Per Swap" 
-            value={rules.max_per_swap} 
-            onChange={(v: number) => setRules({...rules, max_per_swap: v})}
-            icon={DollarSign}
-            suffix="HBAR"
-          />
+            {/* Swap Amount Rule */}
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-secondary flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-primary" />
+                Amount per Click (HBAR)
+              </label>
+              <input 
+                type="number" 
+                value={rules.swap_amount}
+                onChange={(e) => setRules({ ...rules, swap_amount: Number(e.target.value) })}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-lg focus:ring-2 focus:ring-primary outline-none"
+              />
+              <p className="text-xs text-gray-400">How much HBAR to swap each time you press the device button.</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-secondary flex items-center gap-2">
+                <Shield className="w-4 h-4 text-primary" />
+                Max per Swap Limit
+              </label>
+              <input 
+                type="number" 
+                value={rules.max_per_swap}
+                onChange={(e) => setRules({ ...rules, max_per_swap: Number(e.target.value) })}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-mono text-xs focus:ring-2 focus:ring-primary outline-none"
+              />
+            </div>
           <RuleInput 
             label="Daily Allowance" 
             value={rules.daily_limit} 
