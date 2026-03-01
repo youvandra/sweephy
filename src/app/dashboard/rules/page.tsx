@@ -30,7 +30,7 @@ export default function RulesPage() {
   
   // Hardcoded Platform Public Key (In production, fetch from /api/config)
   // This is the public key of the AWS KMS key that signs transactions
-  const PLATFORM_KMS_PUBLIC_KEY = "0x02834... (Your AWS KMS Public Key)"; 
+  const PLATFORM_SPENDER_ID = "0.0.10304901"; // Real KMS Account ID
 
   const [loading, setLoading] = useState(false);
   const [allowanceLoading, setAllowanceLoading] = useState(false);
@@ -61,7 +61,7 @@ export default function RulesPage() {
     setAllowanceLoading(true);
     try {
       console.log("Initiating Allowance Transaction...");
-      console.log("Spender (Platform KMS):", PLATFORM_KMS_PUBLIC_KEY);
+      console.log("Spender (Platform KMS):", PLATFORM_SPENDER_ID);
 
       // --- REAL HEDERA ALLOWANCE TRANSACTION ---
       
@@ -75,7 +75,7 @@ export default function RulesPage() {
       const allowanceTx = new AccountAllowanceApproveTransaction()
         .approveHbarAllowance(
           AccountId.fromString(address as string), // Owner (User)
-          AccountId.fromString("0.0.123456"),      // Spender (Our Platform KMS Account ID - Placeholder)
+          AccountId.fromString(PLATFORM_SPENDER_ID),      // Spender (Our Platform KMS Account ID)
           Hbar.from(1000)                          // Amount
         );
 

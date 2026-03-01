@@ -47,28 +47,29 @@ serve(async (req) => {
       .single();
 
     if (deviceError || !device) {
-      // If device not found, we can't verify signature, but we should return a specific error
-      // so the device can show "CONTACT SUPPORT"
-      return new Response(JSON.stringify({ error: "Device not found", status: "unregistered" }), { status: 404 });
+      return new Response(JSON.stringify({ error: "Device not found" }), { status: 404 });
     }
 
-    // 2. Verify Signature (Payload is just device_id for status check)
-    // The device should sign its own ID to prove identity for status checks
+    // 2. Verify Signature
     const isValid = await verifySignature(device_id, signature, device.secret_hash);
     if (!isValid) {
+      // In strict mode, we'd fail here. 
+      // But for debugging, we might skip this if the user hasn't synced secrets perfectly.
+      // Let's enforce it.
       return new Response(JSON.stringify({ error: "Invalid signature" }), { status: 401 });
     }
 
     // 3. Update Heartbeat
     await supabase.from("devices").update({ 
       last_seen: new Date().toISOString(),
-      status: device.status === "disabled" ? "disabled" : "online"
+      status: "online"
     }).eq("id", device_id);
 
     // 4. Handle Pairing Code Logic
     let pairingCode = device.pairing_codes?.find((c: any) => !c.used && new Date(c.expires_at) > new Date())?.code;
     
     if (!device.is_paired && !pairingCode) {
+        // Generate new pairing code
         const newCode = Math.random().toString(36).slice(-6).toUpperCase();
         const { error: codeError } = await supabase.from("pairing_codes").insert({
           code: newCode,
@@ -78,14 +79,11 @@ serve(async (req) => {
         if (!codeError) pairingCode = newCode;
     }
 
-    // REMOVED: Price fetching is now in 'get-price' function
-    // The device should call 'get-price' separately if it needs the price.
-
     return new Response(JSON.stringify({ 
       is_paired: device.is_paired, 
-      status: device.status, // "online", "disabled"
+      status: device.status,
       pairing_code: pairingCode || null
-    }));
+    }), { headers: { "Content-Type": "application/json" } });
 
   } catch (err) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });

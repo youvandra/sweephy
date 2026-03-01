@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Tablet, ShieldAlert, Key, Hash, AlertTriangle, X, Copy, Check, Info } from "lucide-react";
+import { Plus, Trash2, Tablet, ShieldAlert, Key, Hash, AlertTriangle, X, Copy, Check, Info, ShieldCheck } from "lucide-react";
 import { useAppKitAccount } from "@reown/appkit/react";
 
 export default function AdminPage() {
@@ -41,7 +41,7 @@ export default function AdminPage() {
         .maybeSingle();
       
       if (error) {
-        console.error("Supabase error checking admin status:", error);
+        console.error("Supabase error checking admin status:", error.message, error.details, error.hint);
       }
       
       console.log("Admin check result:", data);
@@ -58,6 +58,13 @@ export default function AdminPage() {
       setChecking(false);
     }
   }
+
+  // --- Display KMS Public Key ---
+  // In a real app, you would fetch this from an Edge Function that queries KMS.
+  // For now, we'll display the Account ID if we know it, or a placeholder.
+  // Ideally, you'd store the KMS Public Key / Account ID in a 'platform_config' table.
+  const kmsKeyId = "c3a98921-e9a0-40ed-9e20-2fcc970e75c9"; // New SECP256K1 Key
+  const operatorId = "0.0.10304901"; // Real Hedera Account ID associated with KMS
 
   async function fetchAllDevices() {
     // Admins should see ALL devices. 
@@ -260,6 +267,46 @@ export default function AdminPage() {
         >
           <Plus className="w-4 h-4 text-primary" /> {loading ? "Provisioning..." : "Provision New Device"}
         </button>
+      </div>
+
+      {/* KMS Info Card */}
+      <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-6 rounded-2xl text-white shadow-xl">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-bold flex items-center gap-2">
+              <ShieldCheck className="text-green-400" /> Platform KMS Wallet
+            </h2>
+            <p className="text-slate-400 text-sm mt-1">
+              This is the Hedera account that signs transactions for users. 
+              Users must grant allowance to this account.
+            </p>
+          </div>
+          <div className="bg-green-500/20 text-green-400 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest">
+            Active
+          </div>
+        </div>
+        
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+            <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Hedera Account ID</p>
+            <div className="flex items-center gap-2">
+              <p className="font-mono text-xl font-bold tracking-tight">{operatorId}</p>
+              <button onClick={() => copyToClipboard(operatorId, 'opId')} className="hover:text-green-400 transition-colors">
+                {copiedField === 'opId' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          
+          <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+            <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">AWS KMS Key ID</p>
+            <div className="flex items-center gap-2">
+              <p className="font-mono text-xs text-slate-300 break-all">{kmsKeyId}</p>
+              <button onClick={() => copyToClipboard(kmsKeyId, 'kmsId')} className="hover:text-green-400 transition-colors shrink-0">
+                {copiedField === 'kmsId' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
