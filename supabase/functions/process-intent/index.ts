@@ -100,11 +100,24 @@ serve(async (req) => {
          }
       }
 
+      // Fetch HBAR Price from CoinGecko
+      let price = "0.00";
+      try {
+        const priceRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=hedera-hashgraph&vs_currencies=usd");
+        if (priceRes.ok) {
+           const priceData = await priceRes.json();
+           price = priceData["hedera-hashgraph"].usd.toString();
+        }
+      } catch (err) {
+        console.error("Price fetch error:", err);
+      }
+
       return new Response(JSON.stringify({ 
         is_paired: device.is_paired, 
         status: device.status,
         pairing_code: pairingCode || null,
-        owner: device.user_id ? "paired" : "none"
+        owner: device.user_id ? "paired" : "none",
+        price: price
       }));
     }
 
