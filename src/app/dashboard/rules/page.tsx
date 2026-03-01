@@ -8,7 +8,8 @@ import {
   Client, 
   AccountId, 
   AccountAllowanceApproveTransaction, 
-  Hbar 
+  Hbar,
+  TransactionId
 } from "@hashgraph/sdk";
 import { useAppKitProvider } from "@reown/appkit/react";
 // import type { Provider } from "@reown/appkit-adapter-wagmi"; // Removed to fix import error
@@ -98,6 +99,7 @@ export default function RulesPage() {
        const allowanceTx = new AccountAllowanceApproveTransaction()
          // @ts-ignore
          .approveHbarAllowance(ownerId, spenderId, Hbar.from(1000))
+         .setTransactionId(TransactionId.generate(ownerId))
          .freezeWith(client); // Must be frozen to be signed
         
       const txBytes = allowanceTx.toBytes();
