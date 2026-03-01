@@ -1,6 +1,6 @@
 {
   "imports": {
     "@hashgraph/sdk": "npm:@hashgraph/sdk@2.46.0",
-    "@aws-sdk/client-kms": "npm:@aws-sdk/client-kms@3.400.0"
+    "@aws-sdk/client-kms": "npm:@aws-sdk/client-kms@3.437.0"
   }
 }

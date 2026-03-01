@@ -1,7 +1,19 @@
 // Follows Supabase Deno Edge Function patterns
 // Use native Deno.serve (available in Supabase Edge Runtime)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { ethers } from "https://esm.sh/ethers@5.7.2?target=deno";
+import { 
+  Client, 
+  AccountId, 
+  PrivateKey, 
+  Transaction, 
+  TransferTransaction, 
+  ContractExecuteTransaction, 
+  ContractFunctionParameters, 
+  Hbar, 
+  TransactionId,
+  PublicKey
+} from "npm:@hashgraph/sdk@2.46.0";
+import { KMSClient, GetPublicKeyCommand } from "npm:@aws-sdk/client-kms@3.437.0";
 
 // --- Configuration ---
 const getEnv = (key: string) => Deno.env.get(key) || "";
@@ -13,15 +25,22 @@ const AWS_SECRET_ACCESS_KEY = getEnv("AWS_SECRET_ACCESS_KEY");
 const AWS_REGION = getEnv("AWS_REGION");
 const AWS_KMS_KEY_ID = getEnv("AWS_KMS_KEY_ID");
 
-// Hedera Hashio Mainnet JSON-RPC
-const RPC_URL = "https://mainnet.hashio.io/api";
-const CHAIN_ID = 295; // Hedera Mainnet
-const SENDER_ADDRESS = "0x2fa7a293044E847E10815012C2963f2C172cD9CD"; 
+// Hedera Config
+const NETWORK = "mainnet"; // or 'testnet'
+const MIRROR_NODE_API = "https://mainnet-public.mirrornode.hedera.com";
+
+// KMS Account (Relayer)
+const KMS_ACCOUNT_ID = AccountId.fromString("0.0.10304901"); 
+
+// SaucerSwap V2 Router (Mainnet)
+const ROUTER_ID = "0.0.3045981"; 
+const WHBAR = "0.0.1456986"; 
+const USDC = "0.0.456858"; 
 
 const SECP256K1_N = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
 
 // --- Helper: ASN.1 / DER Handling for KMS Signature ---
-function derToRaw(der: Uint8Array): { r: string, s: string } {
+function derToRaw(der: Uint8Array): { r: Uint8Array, s: Uint8Array } {
   // Simple DER parser for ECDSA signature
   let offset = 0;
   if (der[offset++] !== 0x30) throw new Error("Invalid DER: Missing Sequence");
@@ -38,7 +57,7 @@ function derToRaw(der: Uint8Array): { r: string, s: string } {
   let sLen = der[offset++];
   let sBytes = der.slice(offset, offset + sLen);
 
-  // Convert to BigInt
+  // Convert to BigInt to check s
   const toBigInt = (arr: Uint8Array) => {
     let hex = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
     return BigInt("0x" + hex);
@@ -52,26 +71,26 @@ function derToRaw(der: Uint8Array): { r: string, s: string } {
       console.log("Flipping S value for EIP-2 compliance");
       s = SECP256K1_N - s;
   }
-
-  const toHex = (val: bigint) => {
+  
+  // Pad to 32 bytes
+  const to32Bytes = (val: bigint) => {
     let hex = val.toString(16);
     if (hex.length % 2 !== 0) hex = "0" + hex;
-    // Pad to 32 bytes (64 hex chars)
     while (hex.length < 64) hex = "0" + hex;
-    return "0x" + hex;
+    return new Uint8Array(hex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
   };
 
-  return { r: toHex(r), s: toHex(s) };
+  return { r: to32Bytes(r), s: to32Bytes(s) };
 }
 
 // --- Helper: Manual AWS Signature V4 ---
-async function awsSign(messageHashBytes: Uint8Array): Promise<{ r: string, s: string }> {
-  console.log("Starting AWS KMS Sign...");
+async function awsSign(messageHashBytes: Uint8Array, keyId: string): Promise<Uint8Array> {
+  console.log("Starting AWS KMS Sign with keyId:", keyId);
   
   const hashBase64 = btoa(String.fromCharCode(...messageHashBytes));
   
   const payload = JSON.stringify({
-    KeyId: AWS_KMS_KEY_ID,
+    KeyId: keyId,
     Message: hashBase64,
     MessageType: "DIGEST",
     SigningAlgorithm: "ECDSA_SHA_256"
@@ -145,7 +164,31 @@ async function awsSign(messageHashBytes: Uint8Array): Promise<{ r: string, s: st
     signatureDer[i] = signatureDerString.charCodeAt(i);
   }
 
-  return derToRaw(signatureDer);
+  const { r, s } = derToRaw(signatureDer);
+  // Concatenate r and s
+  const signature = new Uint8Array(64);
+  signature.set(r, 0);
+  signature.set(s, 32);
+  return signature;
+}
+
+// --- Helper: Get Public Key from KMS ---
+async function getKmsPublicKey(keyId: string): Promise<PublicKey> {
+  const client = new KMSClient({
+      region: AWS_REGION,
+      credentials: {
+          accessKeyId: AWS_ACCESS_KEY_ID,
+          secretAccessKey: AWS_SECRET_ACCESS_KEY
+      }
+  });
+  
+  const command = new GetPublicKeyCommand({ KeyId: keyId });
+  const response = await client.send(command);
+  
+  if (!response.PublicKey) throw new Error("No public key returned from KMS");
+  
+  // KMS returns DER format. Hedera SDK can parse it.
+  return PublicKey.fromBytes(response.PublicKey);
 }
 
 // --- Main Handler ---
@@ -205,142 +248,109 @@ Deno.serve(async (req) => {
     }
 
     if (action === "swap") {
-        console.log("Starting Swap Action via JSON-RPC...");
+        console.log("Starting Swap Action via Hedera SDK...");
         if (!device.is_paired) throw new Error("Device not paired");
         
         const user = device.profiles;
         const rules = user.rules;
         if (!rules.allowance_granted) throw new Error("Allowance not granted by user");
 
-        // 1. Initialize Provider (Ethers v5)
-        const provider = new ethers.providers.JsonRpcProvider(RPC_URL, CHAIN_ID);
-        
-        // 2. Prepare Transaction (SaucerSwap V2)
-        const nonce = await provider.getTransactionCount(SENDER_ADDRESS);
-        const feeData = await provider.getFeeData();
+        // Use Global Relayer Key
+        const signerKeyId = AWS_KMS_KEY_ID;
+        const signerAccountId = KMS_ACCOUNT_ID;
 
-        // SaucerSwap V2 Router
-        const ROUTER_ADDRESS = "0x00000000000000000000000000000000002e7b1d"; // 0.0.3045981
-        const WHBAR = "0x0000000000000000000000000000000000163b5a"; // 0.0.1456986
-        const USDC = "0x000000000000000000000000000000000006f89a";  // 0.0.456858
+        // Create Client
+        const client = Client.forMainnet();
         
-        // Target: User's Wallet (or Rule target)
-        // Convert Hedera ID "0.0.x" to EVM Address if needed, or use existing if 0x
-        let recipient = rules.target_wallet || SENDER_ADDRESS; // Default to self if not set
-        if (recipient.startsWith("0.0.")) {
-            // Simple conversion for now (only works if alias set, but let's try direct Solidity address)
-            const parts = recipient.split(".");
-            const num = BigInt(parts[2]).toString(16).padStart(40, "0");
-            recipient = "0x" + num;
+        // 1. Fetch KMS Public Key
+        const publicKey = await getKmsPublicKey(signerKeyId);
+        
+        // 2. Set Operator with Custom Signer
+        client.setOperatorWith(signerAccountId, publicKey, async (message: Uint8Array) => {
+            return await awsSign(message, signerKeyId);
+        });
+
+        // --- STEP 1: Pull HBAR from User (TransferTransaction) ---
+        const amountHbar = 0.1; 
+        const userAccountId = AccountId.fromString(user.hedera_account_id || "0.0.0"); 
+
+        if (userAccountId.toString() === "0.0.0") throw new Error("User Hedera Account ID not found");
+
+        console.log("Executing Pull Funds (TransferTransaction)...");
+        try {
+          const transferTx = await new TransferTransaction()
+              .addApprovedHbarTransfer(userAccountId, new Hbar(-amountHbar))
+              .addHbarTransfer(signerAccountId, new Hbar(amountHbar))
+              .execute(client);
+          
+          // Wait for receipt to ensure funds are transferred
+          await transferTx.getReceipt(client);
+        } catch (err: any) {
+           console.error("Pull Funds Failed:", err);
+           // If unauthorized, it means allowance is missing or insufficient
+           if (err.message && err.message.includes("SPENDER_DOES_NOT_HAVE_ALLOWANCE")) {
+               return new Response(JSON.stringify({ error: "Allowance Required" }), { status: 401 });
+           }
+           throw err;
         }
 
-        const amountIn = ethers.utils.parseEther("0.1"); // Swap 0.1 HBAR (Small test amount)
-        const amountOutMin = 0; // Slippage 100% for test (Use with caution in prod)
-        const path = [WHBAR, USDC];
-        const deadline = Math.floor(Date.now() / 1000) + 1200; // 20 mins
-
-        // Encode Function Data
-        const iface = new ethers.utils.Interface([
-            "function swapExactETHForTokens(uint amountOutMin, address[] path, address to, uint deadline) external payable returns (uint[] amounts)"
-        ]);
-        const data = iface.encodeFunctionData("swapExactETHForTokens", [
-            amountOutMin,
-            path,
-            recipient,
-            deadline
-        ]);
-
-        const tx = {
-            to: ROUTER_ADDRESS,
-            value: amountIn,
-            chainId: CHAIN_ID,
-            nonce: nonce,
-            gasLimit: ethers.BigNumber.from("1000000"), // 1M Gas for Swap
-            gasPrice: feeData.gasPrice,
-            data: data,
-            type: 0 // Legacy
+        // --- STEP 2: Swap (ContractExecuteTransaction) ---
+        
+        // Helper to convert Hedera ID to EVM Address
+        const toEvmAddress = (id: string) => {
+             const parts = id.split(".");
+             const num = BigInt(parts[2]).toString(16).padStart(40, "0");
+             return "0x" + num;
         };
+
+        const recipient = rules.target_wallet || user.wallet_address;
+        // Ensure recipient is EVM address for Router call
+        let recipientEvm = recipient;
+        if (recipient.startsWith("0.0.")) {
+            recipientEvm = toEvmAddress(recipient);
+        }
+
+        console.log("Executing Swap (ContractExecuteTransaction)...");
+        const swapTx = await new ContractExecuteTransaction()
+             .setContractId(ROUTER_ID)
+             .setGas(1000000)
+             .setPayableAmount(amountHbar)
+             .setFunction("swapExactETHForTokens", 
+                 new ContractFunctionParameters()
+                 .addUint256(0) // amountOutMin
+                 .addAddressArray([toEvmAddress(WHBAR), toEvmAddress(USDC)]) // path
+                 .addAddress(recipientEvm) // to
+                 .addUint256(Math.floor(Date.now() / 1000) + 1200) // deadline
+             )
+             .execute(client);
+             
+        const txIdStr = swapTx.transactionId.toString();
 
         // 3. Insert 'Pending' Intent
         const { data: intent, error: intentError } = await supabase.from("intents").insert({
             device_id,
             action: "swap",
+            pair: "HBAR/USDC", 
+            amount: 0.1,
             status: "pending",
-            details: { type: "saucerswap_v2", path: "HBAR->USDC" }
+            tx_id: txIdStr
         }).select().single();
 
         if (intentError) console.error("DB Insert Error:", intentError);
 
-        // 4. Hash Transaction
-        const unsignedSerialized = ethers.utils.serializeTransaction(tx);
-        const msgHash = ethers.utils.keccak256(unsignedSerialized);
-        const msgHashBytes = ethers.utils.arrayify(msgHash);
-
-        // 5. Sign with KMS
-        const { r, s } = await awsSign(msgHashBytes);
-
-        // 6. Determine v
-        let signature;
-        const v0 = CHAIN_ID * 2 + 35 + 0;
-        const sig0 = { r: r, s: s, v: v0 };
-        const recovered0 = ethers.utils.recoverAddress(msgHash, sig0);
-        
-        if (recovered0.toLowerCase() === SENDER_ADDRESS.toLowerCase()) {
-            signature = sig0;
-        } else {
-             const v1 = CHAIN_ID * 2 + 35 + 1;
-             const sig1 = { r: r, s: s, v: v1 };
-             const recovered1 = ethers.utils.recoverAddress(msgHash, sig1);
-             if (recovered1.toLowerCase() === SENDER_ADDRESS.toLowerCase()) {
-                 signature = sig1;
-             } else {
-                 throw new Error("Failed to recover correct address from KMS signature");
-             }
-        }
-
-        // 7. Serialize Signed Transaction
-        const signedSerialized = ethers.utils.serializeTransaction(tx, signature);
-
-        console.log("Broadcasting Swap Transaction...");
-        const txResponse = await provider.sendTransaction(signedSerialized);
-        console.log("Transaction Hash:", txResponse.hash);
-
-        // 8. Wait for Receipt (Blocking)
-        console.log("Waiting for confirmation...");
-        const receipt = await txResponse.wait(1); // Wait for 1 confirmation
-        console.log("Transaction Status:", receipt.status); // 1 = Success, 0 = Revert
-
-        const finalStatus = receipt.status === 1 ? "completed" : "failed"; // Use 'completed' instead of 'success'
-
-        // 9. Update Intent & Log
-        if (intent) {
-            await supabase.from("intents").update({
-                status: finalStatus,
-                tx_id: txResponse.hash
-            }).eq("id", intent.id);
-
-            await supabase.from("intent_logs").insert({
-                intent_id: intent.id,
-                tx_hash: txResponse.hash,
-                signed_by: SENDER_ADDRESS,
-                details: { 
-                    gasUsed: receipt.gasUsed.toString(), 
-                    blockNumber: receipt.blockNumber,
-                    status: finalStatus
-                }
-            });
-        }
-
-        if (finalStatus === "failed") {
-             return new Response(JSON.stringify({ 
-                error: "Transaction Reverted On-Chain", 
-                txId: txResponse.hash 
-            }), { status: 500, headers: { "Content-Type": "application/json" } });
-        }
+        await supabase.from("intent_logs").insert({
+            intent_id: intent?.id,
+            tx_hash: txIdStr,
+            signed_by: signerAccountId.toString(),
+            details: { 
+                status: "broadcasted",
+                note: "Executed via Hedera SDK with KMS"
+            }
+        });
 
         return new Response(JSON.stringify({ 
             status: "success", 
-            txId: txResponse.hash 
+            txId: txIdStr 
         }), { headers: { "Content-Type": "application/json" } });
     }
 
@@ -357,3 +367,4 @@ Deno.serve(async (req) => {
     });
   }
 });
+
