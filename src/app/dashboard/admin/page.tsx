@@ -109,6 +109,11 @@ export default function AdminPage() {
   async function confirmDelete() {
     if (!deviceToDelete) return;
     
+    // Clean up related tables first (if CASCADE is missing)
+    await supabase.from("pairing_codes").delete().eq("device_id", deviceToDelete.id);
+    await supabase.from("intents").delete().eq("device_id", deviceToDelete.id);
+    await supabase.from("intent_logs").delete().match({ intent_id: deviceToDelete.id }); // Intent logs link to intents, but maybe device_id isn't there directly. Let's trust CASCADE or intent delete.
+
     const { error } = await supabase.from("devices").delete().eq("id", deviceToDelete.id);
     if (error) {
       console.error("Delete error:", error);

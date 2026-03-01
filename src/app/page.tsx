@@ -7,6 +7,7 @@ import Link from "next/link";
 
 import { useAppKit, useAppKitAccount } from '@reown/appkit/react'
 import { useRouter } from 'next/navigation'
+import { AccountId } from "@hashgraph/sdk";
 
 export default function Home() {
   const { open } = useAppKit()
@@ -30,8 +31,23 @@ export default function Home() {
       if (isConnected && address) {
         // Normalize address to lowercase
         const normalizedAddress = address.toLowerCase();
+        
+        // Resolve Hedera Account ID from Mirror Node
+        let hederaId = null;
+        try {
+          const res = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${normalizedAddress}`);
+          const data = await res.json();
+          if (data && data.account) {
+            hederaId = data.account;
+          }
+        } catch (e) {
+          console.warn("Mirror Node lookup failed, trying local conversion");
+          try {
+            hederaId = AccountId.fromEvmAddress(address).toString();
+          } catch (err) {}
+        }
 
-        // Sync wallet address with Supabase (Case-insensitive)
+        // Sync wallet address & Hedera ID with Supabase (Case-insensitive)
         const { data: profile } = await supabase
           .from("profiles")
           .select("id, is_admin")
@@ -40,13 +56,19 @@ export default function Home() {
           .maybeSingle();
         
         if (!profile) {
-          // New user, create profile and go to dashboard
+          // New user, create profile
           await supabase.from("profiles").insert({
             wallet_address: normalizedAddress,
+            hedera_account_id: hederaId // Store the Hedera ID
           });
           router.push('/dashboard');
         } else {
-          // Existing user, check admin status for redirect
+          // Existing user, update Hedera ID if missing
+          if (hederaId) {
+            await supabase.from("profiles").update({ hedera_account_id: hederaId }).eq("id", profile.id);
+          }
+
+          // Check admin status for redirect
           if (profile.is_admin) {
             router.push('/dashboard/admin');
           } else {

@@ -82,11 +82,28 @@ serve(async (req) => {
 
     // 4. Handle Status Check
     if (action === "status") {
-      const pairingCode = device.pairing_codes?.find((c: any) => !c.used && new Date(c.expires_at) > new Date());
+      let pairingCode = device.pairing_codes?.find((c: any) => !c.used && new Date(c.expires_at) > new Date())?.code;
+      
+      // If not paired and no active code, generate one automatically
+      if (!device.is_paired && !pairingCode) {
+         const newCode = Math.random().toString(36).slice(-6).toUpperCase();
+         const { error: codeError } = await supabase.from("pairing_codes").insert({
+            code: newCode,
+            device_id: device_id,
+            expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString() // 15 mins validity
+         });
+         
+         if (!codeError) {
+           pairingCode = newCode;
+         } else {
+           console.error("Error generating pairing code:", codeError);
+         }
+      }
+
       return new Response(JSON.stringify({ 
         is_paired: device.is_paired, 
         status: device.status,
-        pairing_code: pairingCode?.code || null,
+        pairing_code: pairingCode || null,
         owner: device.user_id ? "paired" : "none"
       }));
     }

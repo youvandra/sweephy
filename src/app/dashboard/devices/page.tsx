@@ -117,10 +117,22 @@ export default function DevicesPage() {
   async function confirmDelete() {
     if (!deviceToDelete) return;
     
-    const { error } = await supabase.from("devices").delete().eq("id", deviceToDelete.id);
+    // Unpair the device (don't delete it, so it can be paired again)
+    const { error } = await supabase
+      .from("devices")
+      .update({ 
+        user_id: null, 
+        is_paired: false,
+        status: "offline" // Reset status
+      })
+      .eq("id", deviceToDelete.id);
+
     if (error) {
-      alert("Error deleting device: " + error.message);
+      alert("Error unpairing device: " + error.message);
     } else {
+      // Also mark pairing code as unused? Or generate a new one?
+      // The backend 'process-intent' will generate a new pairing code automatically
+      // when the device sends its next heartbeat.
       fetchDevices();
     }
     setDeviceToDelete(null);
