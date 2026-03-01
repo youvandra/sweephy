@@ -81,45 +81,13 @@ serve(async (req) => {
     }).eq("id", device_id);
 
     // 4. Handle Status Check
+    // DEPRECATED: Use 'get-status' function instead.
+    // This block is kept for backward compatibility if needed, 
+    // but the device now calls a separate endpoint for status.
     if (action === "status") {
-      let pairingCode = device.pairing_codes?.find((c: any) => !c.used && new Date(c.expires_at) > new Date())?.code;
-      
-      // If not paired and no active code, generate one automatically
-      if (!device.is_paired && !pairingCode) {
-         const newCode = Math.random().toString(36).slice(-6).toUpperCase();
-         const { error: codeError } = await supabase.from("pairing_codes").insert({
-            code: newCode,
-            device_id: device_id,
-            expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString() // 15 mins validity
-         });
-         
-         if (!codeError) {
-           pairingCode = newCode;
-         } else {
-           console.error("Error generating pairing code:", codeError);
-         }
-      }
-
-      // Fetch HBAR Price from CoinGecko
-      let price = "0.00";
-      try {
-        const priceRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=hedera-hashgraph&vs_currencies=usd&precision=5");
-        if (priceRes.ok) {
-           const priceData = await priceRes.json();
-           const rawPrice = priceData["hedera-hashgraph"].usd;
-           // Ensure 5 decimal places
-           price = Number(rawPrice).toFixed(5);
-        }
-      } catch (err) {
-        console.error("Price fetch error:", err);
-      }
-
       return new Response(JSON.stringify({ 
-        is_paired: device.is_paired, 
-        status: device.status,
-        pairing_code: pairingCode || null,
-        owner: device.user_id ? "paired" : "none",
-        price: price
+        status: "deprecated", 
+        message: "Use /get-status endpoint" 
       }));
     }
 
