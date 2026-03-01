@@ -103,10 +103,12 @@ serve(async (req) => {
       // Fetch HBAR Price from CoinGecko
       let price = "0.00";
       try {
-        const priceRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=hedera-hashgraph&vs_currencies=usd");
+        const priceRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=hedera-hashgraph&vs_currencies=usd&precision=5");
         if (priceRes.ok) {
            const priceData = await priceRes.json();
-           price = priceData["hedera-hashgraph"].usd.toString();
+           const rawPrice = priceData["hedera-hashgraph"].usd;
+           // Ensure 5 decimal places
+           price = Number(rawPrice).toFixed(5);
         }
       } catch (err) {
         console.error("Price fetch error:", err);
