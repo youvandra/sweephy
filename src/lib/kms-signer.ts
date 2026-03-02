@@ -27,7 +27,7 @@ export async function signWithKMS(
   });
 
   // 1. Initialize Hedera client
-  const hederaClient = Client.forTestnet(); // Use Testnet for development
+  const hederaClient = Client.forMainnet(); // Use Mainnet for production
 
   // 2. Freeze the transaction for signing
   transaction.freezeWith(hederaClient);

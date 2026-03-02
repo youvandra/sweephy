@@ -6,7 +6,7 @@ import { LayoutDashboard, Tablet, Settings, ShieldCheck, LogOut, ArrowRightLeft,
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { useAppKitAccount, useAppKit } from '@reown/appkit/react'
+import { useAppKitAccount, useAppKit, useDisconnect } from '@reown/appkit/react'
 import { useRouter } from 'next/navigation'
 
 import { AccountId } from "@hashgraph/sdk";
@@ -14,6 +14,7 @@ import { AccountId } from "@hashgraph/sdk";
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isConnected, address } = useAppKitAccount()
   const { open } = useAppKit()
+  const { disconnect } = useDisconnect()
   const router = useRouter()
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -114,8 +115,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <div className="p-4 border-t border-white/10">
           <button 
-            onClick={() => {
-              open({ view: 'Account' })
+            onClick={async () => {
+              await disconnect()
               router.push('/')
             }}
             className="flex items-center gap-3 px-4 py-3 w-full hover:bg-red-500/20 rounded-lg text-red-400 transition-colors"
