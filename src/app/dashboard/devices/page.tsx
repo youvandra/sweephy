@@ -25,12 +25,17 @@ export default function DevicesPage() {
 
   async function getOrCreateProfile() {
     if (!address) return null;
-    const { data: profile } = await supabase.from("profiles").select("id").eq("wallet_address", address).single();
+    
+    // Check if we have a profile for this wallet (EVM or Hedera ID)
+    // We try to match address exactly first
+    let { data: profile } = await supabase.from("profiles").select("id").or(`wallet_address.ilike.${address},wallet_address.eq.${address}`).single();
+    
     if (profile) return profile.id;
 
+    // If not found, create one
     const { data: newProfile } = await supabase.from("profiles").insert({
       id: crypto.randomUUID(),
-      wallet_address: address,
+      wallet_address: address, // Store as provided (Hedera ID or EVM Address)
     }).select().single();
     return newProfile?.id;
   }

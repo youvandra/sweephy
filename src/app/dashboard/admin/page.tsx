@@ -33,10 +33,12 @@ export default function AdminPage() {
     setChecking(true);
     try {
       console.log("Checking admin status for address:", address);
+      
+      // Support checking via Hedera ID or EVM Address
       const { data, error } = await supabase
         .from("profiles")
         .select("is_admin")
-        .ilike("wallet_address", address)
+        .or(`wallet_address.ilike.${address},wallet_address.eq.${address}`)
         .limit(1)
         .maybeSingle();
       

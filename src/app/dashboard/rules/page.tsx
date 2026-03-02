@@ -16,9 +16,10 @@ import { useAppKitProvider } from "@reown/appkit/react";
 
 export default function RulesPage() {
   const { address } = useAppKitAccount();
+  // Use generic provider which will be HederaAdapter due to our config
   // @ts-ignore
-  const { walletProvider } = useAppKitProvider("eip155"); // Get WalletConnect provider
-  
+  const { walletProvider } = useAppKitProvider("hedera");
+
   const [rules, setRules] = useState({
     swap_amount: 50, // Default per-click amount
     max_per_swap: 100,
@@ -64,8 +65,10 @@ export default function RulesPage() {
       console.log("Initiating Allowance Transaction...");
       console.log("Spender (Platform KMS):", PLATFORM_SPENDER_ID);
       
-      // Ensure walletProvider is available
-      if (!walletProvider) {
+      // Use Hedera provider
+      const provider = walletProvider as any;
+      
+      if (!provider) {
           throw new Error("Wallet provider not initialized. Please connect your wallet.");
       }
 
@@ -81,19 +84,17 @@ export default function RulesPage() {
        // We don't set operator because we will sign externally
        
        const spenderId = AccountId.fromString(PLATFORM_SPENDER_ID);
-       // We need the user's account ID. 'address' from useAppKitAccount usually returns EVM address for Hedera?
-       // Or if connected via HashPack, it might return Hedera ID "0.0.x".
        
        let ownerIdStr = address as string;
-       // If address is EVM (0x...), we need to resolve it or hope SDK handles it.
-       // Actually, if using HashPack via WalletConnect, the address usually comes as "0.0.123".
-       // Let's check if it starts with "0x".
+       
+       // If address is EVM (0x...), we warn but proceed as some wallets map it.
        if (ownerIdStr.startsWith("0x")) {
-           // Warning: HashPack usually returns 0.0.x. If 0x, maybe Metamask is connected?
-           console.warn("Address is EVM format, but assuming HashPack context. This might fail if Account ID is needed.");
-           // For now, let's proceed. If it fails, we know why.
+           console.warn("Address is EVM format. Native Hedera operations require Account ID (0.0.x).");
+           // Attempt to convert or fallback?
+           // Ideally, for HashPack native connection, address should be 0.0.x
        }
        
+       // Handle Account ID parsing
        const ownerId = AccountId.fromString(ownerIdStr); // Will throw if invalid format
        
        const allowanceTx = new AccountAllowanceApproveTransaction()
@@ -106,73 +107,21 @@ export default function RulesPage() {
       const txBase64 = Buffer.from(txBytes).toString("base64");
       
       // 2. Send Request to Wallet
-      // Standard Hedera WalletConnect method: "hedera_signAndExecuteTransaction" or similar?
-      // Actually, Reown/AppKit abstracts this.
-      // If we are using the 'eip155' provider, we are stuck with EVM methods.
-      // If HashPack is connected, it usually supports Hedera methods.
       
-      // Let's try to use the `walletProvider` to send a custom request.
-      // The method name for Hedera WC is often `hedera_signAndExecuteTransaction`.
-      // But we need to know the specific CAIP standard or method supported by the adapter.
+      const params = {
+          transaction: {
+              type: "bytes",
+              bytes: txBase64
+          }
+      };
       
-      // Fallback: If using `useAppKitProvider('hedera')` is possible?
-      // The current code uses `useAppKitProvider('eip155')`.
-      // If the user is on HashPack, they should be on 'hedera' namespace.
+      const result = await provider.request({
+          method: "hedera_signAndExecuteTransaction",
+          params: [params]
+      });
       
-      // Let's try to detect if we can get a signer from the SDK?
-      // Since we can't easily change the hook in this turn without checking AppKit config...
-      
-      // Let's assume we can use the `ethers` provider to send a raw "eth_sendTransaction" 
-      // BUT HashPack doesn't support eth_sendTransaction for Hedera native TXs.
-      
-      // WAIT. If you are using HashPack, you are likely using the Hedera Adapter in AppKit?
-      // Or you are connecting HashPack as an EVM wallet (it supports both)?
-      // If you connect HashPack as EVM, you get 0x address.
-      // If you connect as Hedera, you get 0.0.x.
-      
-      // Assuming you want NATIVE HBAR allowance:
-      // If 'address' is 0.0.x, we are good.
-      
-      // If we are strictly using the SDK, we need to sign.
-      // Since I cannot implement the full WalletConnect v2 flow here easily,
-      // I will revert to the previous "Simulation" style BUT with a real instruction for you:
-      
-      // "Please sign the transaction in your wallet..."
-      // And I will try to execute it if I can via `window.ethereum` or provider?
-      
-      // Let's try to use the `provider.request` method if available.
-      
-      const provider = walletProvider as any;
-      
-      if (ownerIdStr.includes(".")) {
-          // Native Hedera Flow
-          // We need to send the transaction bytes to the wallet.
-          // Method: hedera_signAndExecuteTransaction
-          const params = {
-              transaction: {
-                  type: "bytes",
-                  bytes: txBase64
-              }
-          };
-          
-          const result = await provider.request({
-              method: "hedera_signAndExecuteTransaction",
-              params: [params]
-          });
-          
-          console.log("Hedera TX Result:", result);
-          setMessage("Native HBAR Allowance Granted!");
-      } else {
-          // EVM Flow (Metamask / HashPack EVM Mode)
-          // We must use the Precompile or WHBAR.
-          // You explicitly asked for Native HBAR.
-          // Only HashPack (Native Mode) allows signing `AccountAllowanceApproveTransaction`.
-          
-          // If you are seeing 0x address, you are in EVM mode.
-          // You must connect via Hedera Native mode to sign native allowance easily.
-          
-          throw new Error("Please connect with HashPack in Native Hedera mode (Address should be 0.0.x) to grant native allowance.");
-      }
+      console.log("Hedera TX Result:", result);
+      setMessage("Native HBAR Allowance Granted!");
 
       // Update Database
       const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address as string).limit(1).maybeSingle();

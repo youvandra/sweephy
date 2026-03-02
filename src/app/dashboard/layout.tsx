@@ -23,39 +23,45 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!isConnected) {
       router.push('/')
     } else if (address) {
-      checkAdminStatus();
-      
-      // Fetch precise Hedera Account ID from Mainnet Mirror Node
-      fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${address}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.account) {
-            setHederaId(data.account);
-          }
-        })
-        .catch(err => {
-          console.warn("Failed to resolve Hedera ID from Mirror Node:", err);
-          // Fallback: try local conversion if API fails
-          try {
-            const id = AccountId.fromEvmAddress(address);
-            setHederaId(id.toString());
-          } catch (e) { /* ignore */ }
-        });
+      // If address is native Hedera format (0.0.x), use it directly
+      if (address.includes(".")) {
+          setHederaId(address);
+          checkAdminStatus(address);
+      } else {
+          // If EVM address (e.g. from Ledger or Metamask on Hedera), try to resolve
+          fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${address}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data && data.account) {
+                setHederaId(data.account);
+                checkAdminStatus(data.account); // Use resolved ID for admin check
+              } else {
+                  // Fallback to address itself if mirror node fails
+                  checkAdminStatus(address);
+              }
+            })
+            .catch(err => {
+              console.warn("Failed to resolve Hedera ID from Mirror Node:", err);
+              checkAdminStatus(address);
+            });
+      }
     }
   }, [isConnected, router, address])
 
-  async function checkAdminStatus() {
-    if (!address) return;
+  async function checkAdminStatus(walletAddress: string) {
+    if (!walletAddress) return;
+    
+    // Check if we have a profile for this wallet
+    // We check both the exact address/ID and potentially the EVM address if stored
     const { data } = await supabase
       .from("profiles")
       .select("is_admin")
-      .ilike("wallet_address", address)
+      .or(`wallet_address.ilike.${walletAddress},wallet_address.eq.${walletAddress}`) // Robust check
       .limit(1)
       .maybeSingle();
     
     if (data?.is_admin) {
       setIsAdmin(true);
-      // If the user is an admin and tries to access the general dashboard, send them to admin page
       if (pathname === '/dashboard') {
         router.push('/dashboard/admin');
       }

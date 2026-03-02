@@ -27,7 +27,8 @@ export default function IntentsPage() {
   }, [address]);
 
   async function fetchIntents() {
-    const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
+    // Match EVM or Hedera ID
+    const { data: profile } = await supabase.from("profiles").select("id").or(`wallet_address.ilike.${address},wallet_address.eq.${address}`).limit(1).maybeSingle();
     if (!profile) return;
 
     const { data } = await supabase

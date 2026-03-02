@@ -1,8 +1,15 @@
 "use client";
 
 import { createAppKit } from '@reown/appkit/react'
-import { EthersAdapter } from '@reown/appkit-adapter-ethers'
-import { mainnet, hedera } from '@reown/appkit/networks'
+import { HederaAdapter } from '@hashgraph/hedera-wallet-connect'
+import { hedera as hederaViem } from '@reown/appkit/networks'
+
+// Define the network with explicit namespace
+const hedera = {
+  ...hederaViem,
+  chainNamespace: 'eip155',
+  caipNetworkId: 'eip155:295'
+} as const
 
 // 1. Get projectId from https://cloud.reown.com (formerly cloud.walletconnect.com)
 const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID || '8e394f4a38575a02e52c88f17a941a8a'
@@ -17,8 +24,14 @@ const metadata = {
 
 // 3. Create the AppKit instance
 createAppKit({
-  adapters: [new EthersAdapter()],
-  networks: [mainnet, hedera],
+  adapters: [
+    new HederaAdapter({
+      projectId,
+      namespace: 'eip155',
+      networks: [hedera]
+    })
+  ],
+  networks: [hedera],
   metadata,
   projectId,
   features: {

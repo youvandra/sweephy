@@ -43,7 +43,7 @@ export default function Home() {
         } catch (e) {
           console.warn("Mirror Node lookup failed, trying local conversion");
           try {
-            hederaId = AccountId.fromEvmAddress(address).toString();
+            hederaId = AccountId.fromEvmAddress(0, 0, address).toString();
           } catch (err) {}
         }
 

@@ -18,7 +18,8 @@ export default function AuditPage() {
 
   async function getProfileId() {
     if (!address) return null;
-    const { data } = await supabase.from("profiles").select("id").eq("wallet_address", address).single();
+    // Match EVM or Hedera ID
+    const { data } = await supabase.from("profiles").select("id").or(`wallet_address.ilike.${address},wallet_address.eq.${address}`).limit(1).maybeSingle();
     return data?.id;
   }
 
