@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.39.3";
+
 import {
   Client, AccountId, TransferTransaction,
   Hbar, TransactionId, PublicKey,
@@ -7,7 +8,7 @@ import {
   ContractId,
   TokenId,
 } from "npm:@hashgraph/sdk@2.46.0";
-import { KMSClient, GetPublicKeyCommand } from "npm:@aws-sdk/client-kms@3.437.0";
+import { KMSClient, GetPublicKeyCommand, SignCommand } from "npm:@aws-sdk/client-kms@3.437.0";
 import { ethers } from "npm:ethers@6.11.1";
 
 const getEnv = (key: string) => Deno.env.get(key) || "";
@@ -22,13 +23,21 @@ const KMS_ACCOUNT_ID = AccountId.fromString("0.0.10304901");
 const SECP256K1_N = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
 
 // SAUCERSWAP CONSTANTS (Mainnet)
-// SaucerSwap V1 Router V3
 const SAUCERSWAP_ROUTER_ID = ContractId.fromString("0.0.3045981");
-// WHBAR Token ID (Mainnet)
 const WHBAR_TOKEN_ID = TokenId.fromString("0.0.1456986");
 const USDC_TOKEN_ID = TokenId.fromString("0.0.456858");
 
-// ✅ Cache di module level
+
+
+// Node accounts untuk semua transaksi (konsisten)
+const NODE_ACCOUNT_IDS = [
+  new AccountId(3),
+  new AccountId(4),
+  new AccountId(5),
+  new AccountId(6),
+];
+
+// Cache public key di module level
 let cachedPublicKey: PublicKey | null = null;
 
 function derToRaw(der: Uint8Array): { r: Uint8Array; s: Uint8Array } {
@@ -58,80 +67,50 @@ function derToRaw(der: Uint8Array): { r: Uint8Array; s: Uint8Array } {
   return { r: to32Bytes(r), s: to32Bytes(s) };
 }
 
+// ✅ FIX #1 — ROOT CAUSE SEBENARNYA dari INVALID_SIGNATURE:
+//
+// Keccak-256 sudah benar per HIP-222. Masalahnya adalah implementasi manual
+// AWS4 HTTP signing via fetch() sangat rawan bug halus (format date, canonical
+// headers, encoding) yang menyebabkan KMS mengembalikan signature dari key yang
+// berbeda atau menolak request secara silent dengan hasil yang corrupted.
+//
+// Solusi: gunakan @aws-sdk/client-kms SignCommand yang sudah ada di package —
+// SDK ini handle semua AWS4 auth secara internal, battle-tested, tidak perlu
+// manual HTTP signing sama sekali. `getKmsPublicKey` sudah pakai SDK ini.
+//
+// Flow yang benar (per HIP-222 & official Hedera KMS guide):
+// 1. SDK memanggil signer dengan raw transaction bytes (bodyBytes)
+// 2. Kita keccak256-hash bytes tersebut → 32 byte digest
+// 3. Kirim ke KMS dengan MessageType: "DIGEST" (KMS tidak hash lagi)
+// 4. KMS kembalikan DER-encoded signature → decode ke raw 64-byte (r+s)
+// 5. Low-S normalization wajib dilakukan agar signature valid di Hedera
 async function awsSign(messageHashBytes: Uint8Array, keyId: string): Promise<Uint8Array> {
-  // ✅ FIX: Cek apakah messageHashBytes sudah berupa hash (32 bytes) atau raw bytes
-  // Jika 32 bytes, asumsikan sudah di-hash oleh SDK. Jika tidak, hash manual.
-  let digest: Uint8Array;
-  if (messageHashBytes.length === 32) {
-      console.log("Input is 32 bytes, assuming pre-hashed digest.");
-      digest = messageHashBytes;
-  } else {
-      console.log("Input is not 32 bytes, hashing with Keccak-256.");
-      const digestHex = ethers.keccak256(messageHashBytes).replace("0x", "");
-      digest = new Uint8Array(digestHex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
-  }
-  
-   const hashBase64 = btoa(String.fromCharCode(...digest));
+  // Step 1: Keccak-256 dari raw transaction bytes
+  const digestHex = ethers.keccak256(messageHashBytes).replace("0x", "");
+  const digest = new Uint8Array(digestHex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
 
-  const payload = JSON.stringify({
-    KeyId: keyId,
-    Message: hashBase64,
-    MessageType: "DIGEST",
-    SigningAlgorithm: "ECDSA_SHA_256",
-  });
-
-
-  const host = `kms.${AWS_REGION}.amazonaws.com`;
-  const contentType = "application/x-amz-json-1.1";
-  const target = "TrentService.Sign";
-  const now = new Date();
-  const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, "");
-  const dateStamp = amzDate.slice(0, 8);
-
-  const canonicalHeaders = `content-type:${contentType}\nhost:${host}\nx-amz-date:${amzDate}\nx-amz-target:${target}\n`;
-  const signedHeaders = "content-type;host;x-amz-date;x-amz-target";
-
-  const payloadHash = Array.from(
-    new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload)))
-  ).map((b) => b.toString(16).padStart(2, "0")).join("");
-
-  const canonicalRequest = `POST\n/\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
-  const credentialScope = `${dateStamp}/${AWS_REGION}/kms/aws4_request`;
-
-  const crHash = Array.from(
-    new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalRequest)))
-  ).map((b) => b.toString(16).padStart(2, "0")).join("");
-
-  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${crHash}`;
-
-  const hmac = async (key: Uint8Array, data: string) => {
-    const k = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    return new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(data)));
-  };
-
-  const kSecret = new TextEncoder().encode("AWS4" + AWS_SECRET_ACCESS_KEY);
-  const kSigning = await hmac(await hmac(await hmac(await hmac(kSecret, dateStamp), AWS_REGION), "kms"), "aws4_request");
-  const sigHex = Array.from(await hmac(kSigning, stringToSign)).map((b) => b.toString(16).padStart(2, "0")).join("");
-
-  const res = await fetch(`https://${host}/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": contentType,
-      "X-Amz-Date": amzDate,
-      "X-Amz-Target": target,
-      "Authorization": `AWS4-HMAC-SHA256 Credential=${AWS_ACCESS_KEY_ID}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${sigHex}`,
+  // Step 2: Gunakan AWS SDK — jauh lebih reliable daripada manual AWS4 signing
+  const kms = new KMSClient({
+    region: AWS_REGION,
+    credentials: {
+      accessKeyId: AWS_ACCESS_KEY_ID,
+      secretAccessKey: AWS_SECRET_ACCESS_KEY,
     },
-    body: payload,
   });
 
-  if (!res.ok) throw new Error(`KMS Sign failed: ${await res.text()}`);
+  const response = await kms.send(new SignCommand({
+    KeyId: keyId,
+    Message: digest,          // Uint8Array langsung — tidak perlu base64 manual
+    MessageType: "DIGEST",    // Kita sudah hash, KMS jangan hash lagi
+    SigningAlgorithm: "ECDSA_SHA_256",
+  }));
 
-  const { Signature } = await res.json();
-  
-  const der = Uint8Array.from(atob(Signature), (c) => c.charCodeAt(0));
-  
-  const { r, s } = derToRaw(der);
-  
+  if (!response.Signature) throw new Error("KMS Sign returned no signature");
+
+  // Step 3: Decode DER → raw r+s (dengan low-S normalization)
+  const der = new Uint8Array(response.Signature);
+  const { r, s } = derToRaw(der); // derToRaw sudah handle low-S normalization
+
   const sig = new Uint8Array(64);
   sig.set(r, 0);
   sig.set(s, 32);
@@ -148,15 +127,13 @@ async function getKmsPublicKey(): Promise<PublicKey> {
   if (!pubKeyBytes) throw new Error("No public key from KMS");
 
   const derBytes = new Uint8Array(pubKeyBytes);
-  
-  // DER SubjectPublicKeyInfo untuk secp256k1 selalu 88 bytes
+
   if (derBytes.length !== 88) throw new Error(`Unexpected DER length: ${derBytes.length}`);
   if (derBytes[23] !== 0x04) throw new Error(`Expected 0x04 at index 23, got: ${derBytes[23]}`);
 
-  const x = derBytes.slice(24, 56);  // 32 bytes X
-  const y = derBytes.slice(56, 88);  // 32 bytes Y
+  const x = derBytes.slice(24, 56);
+  const y = derBytes.slice(56, 88);
 
-  // Compress: 02 jika Y even, 03 jika Y odd
   const prefix = (y[31] & 1) === 0 ? 0x02 : 0x03;
   const compressed = new Uint8Array(33);
   compressed[0] = prefix;
@@ -166,7 +143,6 @@ async function getKmsPublicKey(): Promise<PublicKey> {
   return cachedPublicKey;
 }
 
-// ✅ Resolve EVM address -> Hedera Account ID
 async function resolveAccountId(address: string): Promise<string> {
   if (address.match(/^\d+\.\d+\.\d+$/)) return address;
 
@@ -195,111 +171,84 @@ function toMirrorNodeTransactionId(txId: string): string {
   return `${account}-${seconds}-${nanos}`;
 }
 
-// ✅ Verify allowance via mirror node with pagination
+// ✅ FIX #8: Tambah pagination untuk allowance check
 async function verifyAllowance(ownerAccountId: string, spenderAccountId: string): Promise<number> {
-  let nextLink: string | null = `/api/v1/accounts/${ownerAccountId}/allowances/crypto`;
-  
+  let nextLink: string | null =
+    `${MIRROR_NODE_API}/api/v1/accounts/${ownerAccountId}/allowances/crypto?limit=100`;
+
   while (nextLink) {
-    const res = await fetch(
-      `${MIRROR_NODE_API}${nextLink}`,
-      { signal: AbortSignal.timeout(5000) }
-    );
+    const res = await fetch(nextLink, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) {
       console.warn("Cannot check allowance:", res.status);
-      return -1; // Unknown
+      return -1; // Unknown, proceed anyway
     }
 
     const data = await res.json();
     const allowances: any[] = data.allowances || [];
 
-    const match = allowances.find(
-      (a: any) => a.spender === spenderAccountId
-    );
-
+    const match = allowances.find((a: any) => a.spender === spenderAccountId);
     if (match) {
-        const tinybars = Number(match.amount);
-        return tinybars;
+      return Number(match.amount);
     }
-    
-    // Check for next page
-    nextLink = data.links?.next || null;
+
+    // Pagination: lanjut ke halaman berikutnya jika ada
+    nextLink = data.links?.next
+      ? `${MIRROR_NODE_API}${data.links.next}`
+      : null;
   }
 
   console.warn("No allowance found for spender:", spenderAccountId);
   return 0;
 }
 
-async function debugKmsKeyInfo(): Promise<void> {
-  const kms = new KMSClient({
-    region: AWS_REGION,
-    credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY },
-  });
-  const { PublicKey: pubKeyBytes, KeySpec, SigningAlgorithms } = await kms.send(
-    new GetPublicKeyCommand({ KeyId: AWS_KMS_KEY_ID })
-  );
+// Cek apakah account sudah associate token tertentu via mirror node
+async function checkTokenAssociation(accountId: string, tokenId: string): Promise<boolean> {
+  try {
+    // Mirror node tokenId format: 0.0.XXXXX
+    const normalizedTokenId = tokenId.includes(".") ? tokenId : TokenId.fromString(tokenId).toString();
+    const res = await fetch(
+      `${MIRROR_NODE_API}/api/v1/accounts/${accountId}/tokens?token.id=${normalizedTokenId}&limit=1`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) return false;
+    const data = await res.json();
+    return (data.tokens?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
 }
 
+// ✅ FIX decode: per dokumentasi resmi SaucerSwap, cara yang benar adalah
+// execute() → getRecord() → record.contractFunctionResult.getResult(['uint[]'])
+// BUKAN ContractCallQuery + ethers decode.
 async function getEstimatedAmountOut(client: Client, amountHbar: number): Promise<bigint> {
   try {
     const amountTinybars = BigInt(Math.floor(amountHbar * 1e8));
-    const amountTinybarsStr = amountTinybars.toString();
     const path = [WHBAR_TOKEN_ID.toSolidityAddress(), USDC_TOKEN_ID.toSolidityAddress()];
 
-    // Function: getAmountsOut(uint amountIn, address[] path) returns (uint[] amounts)
     const query = new ContractCallQuery()
       .setContractId(SAUCERSWAP_ROUTER_ID)
-      .setGas(100000) 
+      .setGas(100000)
       .setFunction("getAmountsOut", new ContractFunctionParameters()
-        .addUint256(amountTinybarsStr)
+        .addUint256(amountTinybars.toString())
         .addAddressArray(path)
       );
 
     const result = await query.execute(client);
-    
-    // Decode result using ethers since Hedera SDK result handling for dynamic arrays can be tricky
-    // The result from execute() returns a ContractFunctionResult
-    // We can get the raw bytes
-    const resultBytes = result.asBytes();
-    
-    // Create Interface to decode
-    const abi = ["function getAmountsOut(uint amountIn, address[] path) view returns (uint[] amounts)"];
-    const iface = new ethers.Interface(abi);
-    
-    // ContractFunctionResult.asBytes() returns the raw bytes returned by the contract function
-    // However, ContractCallQuery result handling might need to be checked.
-    // Let's assume asBytes() gives us the encoded return data.
-    // If it fails, we might need to rely on the fact that result.getUint256(1) works if it flattens the array?
-    // But standard is dynamic array.
-    
-    // Let's use a safer approach with the SDK if possible, but ethers decoding is standard.
-    // Wait, ContractCallQuery might return the values directly accessible.
-    // But dynamic arrays are usually not directly accessible via simple getters like getUint256(i) easily without knowing structure.
-    // Let's try decoding the bytes.
-    
-    // Note: The SDK's asBytes() returns the raw bytes of the result.
-    // But we need to be careful if it includes function selector or just return data.
-    // Usually just return data.
-    
-    // ✅ FIX: Jika decode gagal atau result 0, throw error agar tidak lanjut swap dengan 0 amountOutMin
-    let amountOut = 0n;
-    try {
-        const decoded = iface.decodeFunctionResult("getAmountsOut", resultBytes);
-        // decoded[0] is the array of amounts [amountIn, amountOut]
-        const amounts = decoded[0];
-        amountOut = BigInt(amounts[1]); // The second element is the output amount
-    } catch (decodeErr) {
-        console.warn("Decode failed with asBytes(), trying direct access (if supported) or failing.", decodeErr);
-        throw new Error("Failed to decode getAmountsOut result");
-    }
-    
-    if (amountOut === 0n) {
-        throw new Error("Estimated amount out is 0");
-    }
-    
-    return amountOut;
+
+    // Per dokumentasi resmi SaucerSwap: getResult(['uint[]']) adalah cara yang benar
+    // untuk decode dynamic array dari ContractFunctionResult.
+    // https://docs.saucerswap.finance/developer/saucerswap-v1/swap-operations/swap-hbar-for-tokens
+    const values = result.getResult(["uint[]"]);
+    const amounts: bigint[] = values[0];
+
+    // amounts[0] = HBAR input (tinybars), amounts[1] = USDC output (smallest unit, 1e6)
+    const amountOut = amounts[amounts.length - 1];
+    console.log(`getEstimatedAmountOut: ${amountHbar} HBAR = ${amountOut} uUSDC`);
+    return BigInt(amountOut.toString());
   } catch (e) {
     console.error("Failed to estimate amount out:", e);
-    throw e; // Rethrow to handle in caller
+    return BigInt(0);
   }
 }
 
@@ -310,10 +259,8 @@ Deno.serve(async (req) => {
     });
   }
 
-  // ✅ supabase dibuat di sini, lalu dipass ke helper
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // ✅ logIntent sebagai closure - bisa akses supabase
   const logIntent = async (
     deviceId: string, action: string, pair: string,
     amount: number, status: string, txId: string | null, note: string
@@ -380,40 +327,63 @@ Deno.serve(async (req) => {
     // --- SWAP (Streaming Response) ---
     if (action === "swap") {
       const encoder = new TextEncoder();
-      
-      // ✅ FIX: Declare intentId outside to be accessible in catch
-      let intentId: string | null = null;
-      // ✅ Helper to update status (declared here to capture intentId)
+
+      // ✅ FIX #6: intentId dikelola di luar stream scope menggunakan object
+      // agar bisa diakses dari outer catch maupun stream catch.
+      const state = { intentId: null as string | null };
+
       const updateIntentStatus = async (status: string, txId: string, note: string, amount?: number) => {
-        if (!intentId) return;
-        await supabase.from("intents").update({ 
-            status, 
-            tx_id: txId || "failed",
-            amount: amount || 0 
-        }).eq("id", intentId);
-        
+        if (!state.intentId) return;
+        await supabase.from("intents").update({
+          status,
+          tx_id: txId || "failed",
+          amount: amount || 0,
+        }).eq("id", state.intentId);
+
         await supabase.from("intent_logs").insert({
-            intent_id: intentId,
-            tx_hash: txId || "failed",
-            signed_by: KMS_ACCOUNT_ID.toString(),
-            details: { status, note },
+          intent_id: state.intentId,
+          tx_hash: txId || "failed",
+          signed_by: KMS_ACCOUNT_ID.toString(),
+          details: { status, note },
         });
       };
 
       const stream = new ReadableStream({
         async start(controller) {
+          let streamClosed = false;
+
           const send = (msg: string) => {
+            if (streamClosed) {
+              console.warn("Attempted send after stream closed:", msg);
+              return;
+            }
             try {
               controller.enqueue(encoder.encode(msg + "\n"));
-            } catch (e) { console.warn("Stream closed?", e); }
+            } catch (e) {
+              streamClosed = true;
+              console.warn("Stream closed on send:", msg, e);
+            }
           };
+
+          // Keepalive ping setiap 5 detik agar koneksi HTTP tidak timeout
+          // selama operasi transfer + swap yang bisa memakan 30-60 detik.
+          const keepaliveInterval = setInterval(() => {
+            if (streamClosed) {
+              clearInterval(keepaliveInterval);
+              return;
+            }
+            try {
+              controller.enqueue(encoder.encode("PING\n"));
+            } catch {
+              streamClosed = true;
+              clearInterval(keepaliveInterval);
+            }
+          }, 5000);
 
           try {
             send("STATUS:Verifying Device...");
-            
-            // ✅ Idempotency Check (Prevent Double Processing)
-            // Check if there's a recent intent from this device within the last 60 seconds (increased from 15s)
-            // that is either processing or successful.
+
+            // Idempotency Check
             const { data: recentIntent } = await supabase
               .from("intents")
               .select("created_at, status")
@@ -424,36 +394,34 @@ Deno.serve(async (req) => {
 
             if (recentIntent) {
               const timeDiff = Date.now() - new Date(recentIntent.created_at).getTime();
-              // ✅ FIX: Increased idempotency window to 60s
               if (
                 timeDiff < 60000 &&
                 (recentIntent.status === "processing" ||
                   recentIntent.status === "success" ||
                   recentIntent.status === "completed")
               ) {
-                 console.warn(`Duplicate request ignored for device ${device_id}`);
-                 send("ERROR:Too Many Requests");
-                 return;
+                console.warn(`Duplicate request ignored for device ${device_id}`);
+                send("ERROR:Too Many Requests");
+                return;
               }
             }
 
             const { data: newIntent, error: intentError } = await supabase.from("intents").insert({
-              device_id: device_id, 
-              action: "swap", 
-              pair: "HBAR/USDC", 
-              amount: 0, // Will update later
-              status: "processing", 
+              device_id: device_id,
+              action: "swap",
+              pair: "HBAR/USDC",
+              amount: 0,
+              status: "processing",
               tx_id: "pending",
             }).select().single();
 
             if (intentError || !newIntent) {
-               console.error("DB Error:", intentError);
-               throw new Error("DB Error: Failed to init intent");
+              console.error("DB Error:", intentError);
+              throw new Error("DB Error: Failed to init intent");
             }
-            intentId = newIntent.id;
+            // ✅ FIX #6: Simpan ke state object (bukan local var) agar accessible di luar
+            state.intentId = newIntent.id;
 
-            // await debugKmsKeyInfo(); // ✅ FIX: Removed debug call
-            
             if (!device.is_paired) {
               await updateIntentStatus("failed", "failed", "Device not paired");
               throw new Error("Device not paired");
@@ -481,11 +449,10 @@ Deno.serve(async (req) => {
 
             const amountHbar = Math.max(rules.swap_amount || 1.0, 0.1);
             const amountTinybars = Math.floor(amountHbar * 1e8);
-            
-            // Update amount in DB
-            await supabase.from("intents").update({ amount: amountHbar }).eq("id", intentId);
 
-            // 2. Verify allowance on-chain
+            await supabase.from("intents").update({ amount: amountHbar }).eq("id", state.intentId);
+
+            // 2. Verify allowance on-chain (dengan pagination)
             send("STATUS:Checking Allowance...");
             const remainingTinybars = await verifyAllowance(userAccountIdStr, KMS_ACCOUNT_ID.toString());
 
@@ -500,9 +467,8 @@ Deno.serve(async (req) => {
 
             // 3. Setup client + KMS
             const client = Client.forMainnet();
-            // ✅ FIX: Increase max attempts to handle transient gRPC/network errors (e.g. UNAVAILABLE, Write error)
-            client.setMaxAttempts(10); 
-            client.setRequestTimeout(60000); // ✅ FIX: 60s timeout to allow full execution without client-side timeout.
+            client.setMaxAttempts(5);
+            client.setRequestTimeout(45000);
 
             const publicKey = await getKmsPublicKey();
             client.setOperatorWith(KMS_ACCOUNT_ID, publicKey, (msg) => awsSign(msg, AWS_KMS_KEY_ID));
@@ -511,6 +477,34 @@ Deno.serve(async (req) => {
             let transferSucceeded = false;
             let swapCompleted = false;
 
+            // 3b. Pre-check: pastikan user account sudah associate USDC
+            // Ini WAJIB dilakukan SEBELUM transfer HBAR — supaya jika gagal,
+            // tidak ada dana yang sudah berpindah dan perlu di-refund.
+            // SaucerSwap V1 akan revert (CONTRACT_REVERT_EXECUTED) jika recipient
+            // belum associate output token, per dokumentasi resmi SaucerSwap.
+            send("STATUS:Checking USDC Association...");
+            const isUsdcAssociated = await checkTokenAssociation(
+              userAccountIdStr,
+              USDC_TOKEN_ID.toString()
+            );
+            if (!isUsdcAssociated) {
+              await updateIntentStatus("failed", "failed", "User account not associated with USDC");
+              throw new Error("USDC_NOT_ASSOCIATED");
+            }
+
+            // 3c. Pre-check: pastikan KMS operator account juga sudah associate USDC.
+            // "Safe token transfer failed!" terjadi karena SaucerSwap Router memanggil
+            // safeTransferToken dari KMS account (msg.sender) ke user account.
+            // Hedera HTS mensyaratkan msg.sender juga sudah associate token yang di-transfer.
+            const isKmsUsdcAssociated = await checkTokenAssociation(
+              KMS_ACCOUNT_ID.toString(),
+              USDC_TOKEN_ID.toString()
+            );
+            if (!isKmsUsdcAssociated) {
+              await updateIntentStatus("failed", "failed", "KMS operator account not associated with USDC — associate manually via HashPack or SDK");
+              throw new Error("KMS_USDC_NOT_ASSOCIATED");
+            }
+
             // 4. Build & execute transfer
             send("STATUS:Transferring HBAR...");
             const transferTx = new TransferTransaction()
@@ -518,16 +512,10 @@ Deno.serve(async (req) => {
               .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(amountHbar))
               .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
               .setMaxTransactionFee(new Hbar(2))
-              .setNodeAccountIds([                  
-                  new AccountId(3),
-                  new AccountId(4),
-                  new AccountId(5),
-                  new AccountId(6),
-                ])
+              .setNodeAccountIds(NODE_ACCOUNT_IDS) // ✅ Konsisten
               .freezeWith(client);
 
             const signedTx = await transferTx.signWithOperator(client);
-
             let txId = transferTx.transactionId?.toString() || "";
 
             try {
@@ -539,22 +527,17 @@ Deno.serve(async (req) => {
               transferSucceeded = true;
               await updateIntentStatus("processing", txId, "Transfer OK", amountHbar);
 
-              // Proceed to Swap
               try {
                 await executeSwap(amountHbar, userAccountId, txId);
               } catch (postTransferErr: any) {
                 if (transferSucceeded && !swapCompleted) {
                   try {
+                    // ✅ FIX #4: Refund juga pakai NODE_ACCOUNT_IDS
                     const refundTx = new TransferTransaction()
                       .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(-amountHbar))
                       .addHbarTransfer(userAccountId, new Hbar(amountHbar))
                       .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
-                      .setNodeAccountIds([                  
-                          new AccountId(3),
-                          new AccountId(4),
-                          new AccountId(5),
-                          new AccountId(6),
-                        ])
+                      .setNodeAccountIds(NODE_ACCOUNT_IDS)
                       .freezeWith(client);
                     const signedRefund = await refundTx.signWithOperator(client);
                     await (await signedRefund.execute(client)).getReceipt(client);
@@ -583,7 +566,6 @@ Deno.serve(async (req) => {
             } catch (txErr: any) {
               console.error("TX Error:", txErr.message);
 
-              // Timeout / Unknown Error Recovery
               if (txErr.message === "TX_TIMEOUT" || txErr.message.includes("UNKNOWN") || txErr.message.includes("max attempts")) {
                 try {
                   const mirrorTxId = toMirrorNodeTransactionId(txId);
@@ -608,16 +590,15 @@ Deno.serve(async (req) => {
                     }
                   }
                 } catch (recoveryErr) {
-                   console.error("Recovery check failed:", recoveryErr);
+                  console.error("Recovery check failed:", recoveryErr);
                 }
-                
+
                 await updateIntentStatus("failed", "failed", txErr.message);
                 throw new Error("SERVER TIMEOUT/UNKNOWN");
               }
 
-              // Allowance errors
               if (txErr.message?.includes("SPENDER_DOES_NOT_HAVE_ALLOWANCE") ||
-                  txErr.message?.includes("AMOUNT_EXCEEDS_ALLOWANCE")) {
+                txErr.message?.includes("AMOUNT_EXCEEDS_ALLOWANCE")) {
                 await updateIntentStatus("failed", "failed", txErr.message);
                 throw new Error("ALLOWANCE ERR");
               }
@@ -626,93 +607,217 @@ Deno.serve(async (req) => {
               throw new Error(txErr.message);
             }
 
-            // --- Helper Function for Swap Logic ---
+            // --- Swap Logic ---
             async function executeSwap(amountHbar: number, userAccountId: AccountId, txId: string) {
-              // 5. Execute Swap (HBAR -> USDC)
               send("STATUS:Swapping HBAR->USDC");
-              try {
-                // ✅ FIX: Calculate Slippage
-                const estimatedOut = await getEstimatedAmountOut(client, amountHbar);
-                // Apply 2% slippage tolerance (multiply by 0.98)
-                const amountOutMin = (estimatedOut * 98n) / 100n;
-                
-                // ✅ FIX: Use toSolidityAddress() only for EVM compatible addresses, but for AccountId, 
-                // SaucerSwap might expect the AccountId directly if it's not an EVM alias.
-                // However, swapExactETHForTokens expects `address to`.
-                // If userAccountId is 0.0.x, toSolidityAddress() returns the hex format of that ID.
-                // If it's an alias (EVM addr), it returns that.
-                
-                // If the error is INVALID_ALIAS_KEY, it might be because we are sending funds TO an account
-                // that doesn't have an alias set, or using an alias that doesn't map correctly?
-                // Actually, INVALID_ALIAS_KEY often happens when transfer/crypto operations involve an account
-                // that is being auto-created or referenced via alias incorrectly.
-                
-                // But here we are calling a contract.
-                // Let's ensure 'to' is the solidity address of the user.
-                const to = userAccountId.toSolidityAddress();
-                
-                // Jika error INVALID_ALIAS_KEY terjadi saat refund, itu karena kita mencoba transfer HBAR ke
-                // userAccountId yang mungkin dianggap alias key yang tidak valid oleh network jika belum "ter-hydrate"
-                // atau jika SDK salah format.
-                
-                const deadline = Math.floor(Date.now() / 1000) + 1200; 
 
+              // Declare di luar try agar catch bisa akses transactionId untuk mirror node lookup
+              let swapTxId = "";
+
+              try {
+                // getAmountsOut mengembalikan amounts dalam unit masing-masing token:
+                // amounts[0] = HBAR input dalam tinybars (1e8)
+                // amounts[1] = USDC output dalam smallest unit (1e6, karena USDC 6 decimals)
+                const estimatedOut = await getEstimatedAmountOut(client, amountHbar);
+                if (estimatedOut === 0n) {
+                  throw new Error("Cannot estimate swap output. Aborting to protect funds.");
+                }
+
+                // Slippage 2% — estimatedOut sudah dalam USDC smallest unit (1e6)
+                const amountOutMin = (estimatedOut * 98n) / 100n;
+
+                console.log(`Swap: ${amountHbar} HBAR → est. ${estimatedOut} uUSDC, min ${amountOutMin} uUSDC`);
+
+                // Resolve EVM address yang benar untuk parameter `to` di contract call.
+                // wallet_address bisa berupa format apapun (0.0.XXXXX, EVM hex, dll).
+                // Kita perlu EVM alias 20-byte (40 hex chars) yang valid untuk addAddress().
+                // Cara paling reliable: fetch dari mirror node → field evm_address.
+                let to: string;
+                try {
+                  const accRes = await fetch(
+                    `${MIRROR_NODE_API}/api/v1/accounts/${userAccountIdStr}`,
+                    { signal: AbortSignal.timeout(5000) }
+                  );
+                  if (!accRes.ok) throw new Error("Mirror node account fetch failed");
+                  const accData = await accRes.json();
+                  // evm_address adalah EVM alias 20-byte yang valid untuk HTS contract calls
+                  const evmAddress = accData.evm_address as string | undefined;
+                  if (!evmAddress || evmAddress.length < 40) throw new Error("No valid evm_address");
+                  to = evmAddress.startsWith("0x") ? evmAddress : "0x" + evmAddress;
+                } catch (addrErr: any) {
+                  // Fallback: gunakan toSolidityAddress() dari AccountId
+                  console.warn("EVM address fetch failed, using toSolidityAddress:", addrErr.message);
+                  to = userAccountId.toSolidityAddress();
+                }
+                console.log("Swap to address:", to);
+                const deadline = Math.floor(Date.now() / 1000) + 1200;
                 const path = [WHBAR_TOKEN_ID.toSolidityAddress(), USDC_TOKEN_ID.toSolidityAddress()];
-                
+
                 const swapTx = new ContractExecuteTransaction()
                   .setContractId(SAUCERSWAP_ROUTER_ID)
-                  .setGas(2500000) // ✅ FIX: Increase Gas Limit to avoid CONTRACT_REVERT_EXECUTED (out of gas)
+                  .setGas(2500000)
                   .setPayableAmount(amountHbar)
                   .setFunction("swapExactETHForTokens", new ContractFunctionParameters()
-                    .addUint256(amountOutMin.toString()) // ✅ FIX: Use calculated amountOutMin as String
+                    .addUint256(amountOutMin.toString())  // USDC smallest unit (1e6)
                     .addAddressArray(path)
                     .addAddress(to)
                     .addUint256(deadline)
                   )
                   .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
+                  .setNodeAccountIds(NODE_ACCOUNT_IDS)
                   .freezeWith(client);
 
+                swapTxId = swapTx.transactionId?.toString() || "";
+                console.log("Executing swap tx:", swapTxId);
+                send("STATUS:Executing swap on-chain...");
+
                 const signedSwapTx = await swapTx.signWithOperator(client);
-                const swapReceipt = await (await signedSwapTx.execute(client)).getReceipt(client);
-                
+                const swapResponse = await signedSwapTx.execute(client);
+                console.log("Swap execute() returned, getting receipt...");
+
+                // getReceipt() otomatis throw jika status != SUCCESS
+                // Pisahkan dari execute() agar bisa dibedakan mana yang gagal
+                try {
+                  await swapResponse.getReceipt(client);
+                } catch (receiptErr: any) {
+                  console.error("getReceipt error:", receiptErr.message);
+
+                  // Jika CONTRACT_REVERT atau status error — swap gagal, aman refund
+                  if (
+                    receiptErr.message?.includes("CONTRACT_REVERT") ||
+                    receiptErr.message?.includes("INVALID") ||
+                    receiptErr.message?.includes("INSUFFICIENT")
+                  ) {
+                    throw receiptErr;
+                  }
+
+                  // Jika timeout/UNKNOWN — verifikasi mirror node dulu sebelum refund
+                  console.warn("Receipt inconclusive, verifying via mirror node...");
+                  send("STATUS:Verifying swap on-chain...");
+
+                  const mirrorId = toMirrorNodeTransactionId(swapTxId);
+                  let verified = false;
+                  for (let i = 0; i < 6; i++) {
+                    await new Promise(r => setTimeout(r, 4000));
+                    try {
+                      const check = await fetch(
+                        `${MIRROR_NODE_API}/api/v1/transactions/${mirrorId}`,
+                        { signal: AbortSignal.timeout(5000) }
+                      );
+                      if (check.ok) {
+                        const { transactions } = await check.json();
+                        if (transactions?.find((t: any) => t.result === "SUCCESS")) {
+                          console.log("Mirror node: swap SUCCESS");
+                          verified = true;
+                          break;
+                        }
+                        if (transactions?.length > 0) {
+                          console.log("Mirror node: swap result =", transactions[0].result);
+                          throw new Error("SWAP_FAILED: " + transactions[0].result);
+                        }
+                      }
+                    } catch (e: any) {
+                      if (e.message?.startsWith("SWAP_FAILED")) throw e;
+                    }
+                  }
+                  if (!verified) throw new Error("SWAP_UNVERIFIED_TIMEOUT");
+                }
+
                 swapCompleted = true;
-                
-                // 6. Transfer USDC to User (Implicit in Swap)
+
                 send("STATUS:Transferring USDC...");
-                // ✅ FIX: Log amount details
-                await updateIntentStatus("completed", txId, `Swap & Transfer Complete. Est: ${estimatedOut}, Min: ${amountOutMin}`, amountHbar);
-                
+                await updateIntentStatus(
+                  "completed",
+                  txId,
+                  `Swap complete. Est: ${estimatedOut} uUSDC, Min: ${amountOutMin} uUSDC`,
+                  amountHbar,
+                );
+
                 send("SUCCESS:" + txId);
 
               } catch (swapErr: any) {
+                // SAFETY GUARD: Jika swapCompleted sudah true, swap sudah sukses.
+                // Jangan refund — ini seharusnya tidak terjadi, tapi sebagai last resort.
+                if (swapCompleted) {
+                  console.error("BUG: entered catch after swapCompleted=true:", swapErr.message);
+                  send("SUCCESS:" + txId);
+                  return;
+                }
+
+                // Fetch exact revert reason dari mirror node
+                if (swapTxId && swapErr.message?.includes("CONTRACT_REVERT_EXECUTED")) {
+                  try {
+                    const mirrorId = toMirrorNodeTransactionId(swapTxId);
+                    const r = await fetch(
+                      `${MIRROR_NODE_API}/api/v1/contracts/results/${mirrorId}`,
+                      { signal: AbortSignal.timeout(5000) }
+                    );
+                    if (r.ok) {
+                      const d = await r.json();
+                      const reason = d.error_message || d.revert_reason || "no revert reason in mirror";
+                      console.error("Contract revert reason:", reason);
+                      swapErr.message = `CONTRACT_REVERT: ${reason}`;
+                    }
+                  } catch (e) {
+                    console.warn("Could not fetch revert reason:", e);
+                  }
+                }
+
+                // Jika error bukan SWAP_FAILED_VERIFIED (artinya bukan dari mirror verify kita),
+                // lakukan satu kali pengecekan mirror node sebelum refund untuk safety.
+                if (swapTxId && swapErr.message !== "SWAP_FAILED_VERIFIED") {
+                  try {
+                    const mirrorId = toMirrorNodeTransactionId(swapTxId);
+                    await new Promise(r => setTimeout(r, 3000));
+                    const check = await fetch(
+                      `${MIRROR_NODE_API}/api/v1/transactions/${mirrorId}`,
+                      { signal: AbortSignal.timeout(5000) }
+                    );
+                    if (check.ok) {
+                      const { transactions } = await check.json();
+                      const success = transactions?.find((t: any) => t.result === "SUCCESS");
+                      if (success) {
+                        // Swap ternyata sukses — jangan refund!
+                        console.log("Swap was actually SUCCESS — skipping refund");
+                        swapCompleted = true;
+                        await updateIntentStatus("completed", txId, "Swap SUCCESS (recovered from catch)", amountHbar);
+                        send("SUCCESS:" + txId);
+                        return;
+                      }
+                    }
+                  } catch { /* lanjut ke refund */ }
+                }
+
                 console.error("Swap Error:", swapErr.message);
-                
-                // 🚨 REFUND LOGIC
                 send("STATUS:Swap Failed. Refunding...");
-                
+
                 try {
-                    const refundTx = new TransferTransaction()
-                      .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(-amountHbar))
-                      .addHbarTransfer(userAccountId, new Hbar(amountHbar))
-                      .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
-                      .setNodeAccountIds([                  
-                          new AccountId(3),
-                          new AccountId(4),
-                          new AccountId(5),
-                          new AccountId(6),
-                        ])
-                      .freezeWith(client);
-                      
-                    const signedRefund = await refundTx.signWithOperator(client);
-                    // ✅ FIX: Await receipt for refund
-                    await (await signedRefund.execute(client)).getReceipt(client);
-                    
-                    await updateIntentStatus("failed", txId, `Swap Failed: ${swapErr.message}. REFUNDED.`, amountHbar);
-                    send("ERROR:Swap Failed. HBAR Refunded.");
+                  const refundTx = new TransferTransaction()
+                    .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(-amountHbar))
+                    .addHbarTransfer(userAccountId, new Hbar(amountHbar))
+                    .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
+                    .setNodeAccountIds(NODE_ACCOUNT_IDS)
+                    .freezeWith(client);
+
+                  const signedRefund = await refundTx.signWithOperator(client);
+                  await (await signedRefund.execute(client)).getReceipt(client);
+
+                  await updateIntentStatus(
+                    "failed",
+                    txId,
+                    `Swap Failed: ${swapErr.message}. REFUNDED.`,
+                    amountHbar,
+                  );
+                  send("ERROR:Swap Failed. HBAR Refunded.");
                 } catch (refundErr: any) {
-                    console.error("Refund Failed:", refundErr.message);
-                    await updateIntentStatus("failed", txId, `Swap Failed & REFUND FAILED: ${refundErr.message}`, amountHbar);
-                    send("ERROR:CRITICAL: Refund Failed. Contact Support.");
+                  console.error("Refund Failed:", refundErr.message);
+                  await updateIntentStatus(
+                    "failed",
+                    txId,
+                    `Swap Failed & REFUND FAILED: ${refundErr.message}`,
+                    amountHbar,
+                  );
+                  send("ERROR:CRITICAL: Refund Failed. Contact Support.");
                 }
               }
             }
@@ -721,21 +826,29 @@ Deno.serve(async (req) => {
             console.error("Critical error:", error);
             let msg = error.message;
             if (msg.length > 50) msg = msg.substring(0, 50);
-            
-            // ✅ FIX: intentId is now accessible here if it was set
-            if (intentId) {
-                await updateIntentStatus("failed", "failed", `Critical Error: ${msg}`).catch(e => console.error("Failed to log critical error", e));
+
+            // ✅ FIX #6: state.intentId sekarang accessible karena pakai object reference
+            if (state.intentId) {
+              await updateIntentStatus("failed", "failed", `Critical Error: ${msg}`)
+                .catch(e => console.error("Failed to log critical error", e));
             }
-            
+
             send("ERROR:" + msg);
           } finally {
-            controller.close();
+            streamClosed = true;
+            clearInterval(keepaliveInterval);
+            try { controller.close(); } catch { /* already closed */ }
           }
         }
       });
 
       return new Response(stream, {
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+          "X-Accel-Buffering": "no",  // Disable nginx buffering jika ada reverse proxy
+        },
       });
     }
 
