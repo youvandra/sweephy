@@ -21,8 +21,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [hederaId, setHederaId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isConnected) {
-      router.push('/')
+    if (isConnected === false) {
+      router.replace('/'); // Use replace to prevent back navigation
     } else if (address) {
       // If address is native Hedera format (0.0.x), use it directly
       if (address.includes(".")) {
@@ -84,58 +84,65 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   // Render Navigation Items
-  const renderNavItems = () => navItems.map((item) => {
-    const Icon = item.icon;
-    const isActive = pathname === item.href;
-    return (
-      <Link
-        key={item.href}
-        href={item.href}
-        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-          isActive ? "bg-primary text-secondary font-bold" : "hover:bg-white/10"
-        }`}
-      >
-        <Icon className="w-5 h-5" />
-        {item.label}
-      </Link>
-    );
-  });
+  // Removed old renderNavItems function as it is now inside NavContent
 
   const handleDisconnect = async () => {
     try {
       await disconnect();
-      router.push('/');
+      // Use window.location.href to force a full page reload and redirect
+      window.location.href = '/';
     } catch (error) {
       console.error("Disconnect failed:", error);
       // Force redirect anyway
-      router.push('/');
+      window.location.href = '/';
     }
   };
+
+  const NavContent = () => (
+    <>
+      <div className="p-6">
+        <h1 className="text-2xl font-bold flex items-center gap-2 text-primary">
+          <Activity className="w-8 h-8" />
+          Sweephy
+        </h1>
+      </div>
+      
+      <nav className="flex-1 px-4 py-4 space-y-1">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                isActive ? "bg-primary text-secondary font-bold" : "hover:bg-white/10"
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="p-4 border-t border-white/10">
+        <button 
+          onClick={handleDisconnect}
+          className="flex items-center gap-3 px-4 py-3 w-full hover:bg-red-500/20 rounded-lg text-red-400 transition-colors text-left cursor-pointer"
+        >
+          <LogOut className="w-5 h-5" />
+          Disconnect Wallet
+        </button>
+      </div>
+    </>
+  );
 
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
       <aside className="w-64 bg-secondary text-white flex flex-col">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold flex items-center gap-2 text-primary">
-            <Activity className="w-8 h-8" />
-            Sweephy
-          </h1>
-        </div>
-        
-        <nav className="flex-1 px-4 py-4 space-y-1">
-          {renderNavItems()}
-        </nav>
-
-        <div className="p-4 border-t border-white/10">
-          <button 
-            onClick={handleDisconnect}
-            className="flex items-center gap-3 px-4 py-3 w-full hover:bg-red-500/20 rounded-lg text-red-400 transition-colors text-left"
-          >
-            <LogOut className="w-5 h-5" />
-            Disconnect Wallet
-          </button>
-        </div>
+        <NavContent />
       </aside>
 
       {/* Main Content */}
