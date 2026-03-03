@@ -13,7 +13,7 @@ import { useRouter } from 'next/navigation'
 import { AccountId } from "@hashgraph/sdk";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { isConnected, address } = useAppKitAccount()
+  const { isConnected, address, status } = useAppKitAccount()
   const { open } = useAppKit()
   const { disconnect } = useDisconnect()
   const router = useRouter()
@@ -21,53 +21,62 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isAdmin, setIsAdmin] = useState(false);
   const [hederaId, setHederaId] = useState<string | null>(null);
 
+  // ✅ Gunakan dua kondisi: timeout fallback + isConnected definitif
+  const [hydrated, setHydrated] = useState(false);
+
   useEffect(() => {
-    if (isConnected === false) {
-      router.replace('/'); // Use replace to prevent back navigation
+    // Safety net: paksa hydrated setelah 1.5s walau isConnected masih undefined
+    // Ini handle kasus AppKit lambat resolve karena dual-network setup
+    const timeout = setTimeout(() => {
+      setHydrated(true);
+    }, 1500);
+
+    return () => clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    // Wait for hydration or definitive status
+    // status can be 'connected', 'disconnected', 'connecting', 'reconnecting'
+    // We should NOT redirect if status is 'connecting' or 'reconnecting'
+    if (status === 'connecting' || status === 'reconnecting') return;
+    
+    // If isConnected is undefined, wait.
+    if (isConnected === undefined) return;
+
+    setHydrated(true);
+
+    // Only redirect if explicitly disconnected AND status is confirmed 'disconnected'
+    if (isConnected === false && status === 'disconnected') {
+      router.replace('/');
     } else if (address) {
-      // If address is native Hedera format (0.0.x), use it directly
       if (address.includes(".")) {
-          setHederaId(address);
-          checkAdminStatus(address);
+        setHederaId(address);
+        checkAdminStatus(address);
       } else {
-          // If EVM address (e.g. from Ledger or Metamask on Hedera), try to resolve
-          fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${address}`)
-            .then(res => res.json())
-            .then(data => {
-              if (data && data.account) {
-                setHederaId(data.account);
-                checkAdminStatus(data.account); // Use resolved ID for admin check
-              } else {
-                  // Fallback to address itself if mirror node fails
-                  checkAdminStatus(address);
-              }
-            })
-            .catch(err => {
-              console.warn("Failed to resolve Hedera ID from Mirror Node:", err);
+        fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${address}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data?.account) {
+              setHederaId(data.account);
+              checkAdminStatus(data.account);
+            } else {
               checkAdminStatus(address);
-            });
+            }
+          })
+          .catch(() => checkAdminStatus(address));
       }
     }
-  }, [isConnected, router, address])
+  }, [isConnected, address, router, status]);
 
   async function checkAdminStatus(walletAddress: string) {
     if (!walletAddress) return;
-    
-    // Check if we have a profile for this wallet
-    // We check both the exact address/ID and potentially the EVM address if stored
     const { data } = await supabase
       .from("profiles")
       .select("is_admin")
-      .or(`wallet_address.ilike.${walletAddress},wallet_address.eq.${walletAddress}`) // Robust check
+      .or(`wallet_address.ilike.${walletAddress},wallet_address.eq.${walletAddress}`)
       .limit(1)
       .maybeSingle();
-    
-    if (data?.is_admin) {
-      setIsAdmin(true);
-      if (pathname === '/dashboard') {
-        router.push('/dashboard/admin');
-      }
-    }
+    if (data?.is_admin) setIsAdmin(true);
   }
 
   const navItems = [
@@ -78,26 +87,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { icon: ShieldCheck, label: "Audit Logs", href: "/dashboard/audit" },
   ];
 
-  // For Admins, we might want to prioritize the Admin Panel or hide the user dashboard
   if (isAdmin) {
-    // Insert Admin Panel at the top for Admins
     navItems.unshift({ icon: ShieldAlert, label: "Admin Panel", href: "/dashboard/admin" });
   }
-
-  // Render Navigation Items
-  // Removed old renderNavItems function as it is now inside NavContent
 
   const handleDisconnect = async () => {
     try {
       await disconnect();
-      // Use window.location.href to force a full page reload and redirect
       window.location.href = '/';
     } catch (error) {
       console.error("Disconnect failed:", error);
-      // Force redirect anyway
       window.location.href = '/';
     }
   };
+
+  // ✅ FIX: Tampilkan loading spinner selama AppKit hydrating
+  // Ini mencegah children render sebelum auth state siap,
+  // sekaligus mencegah redirect prematur
+  if (!hydrated) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-secondary-light">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-alt-1 font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   const NavContent = () => (
     <>
@@ -147,12 +163,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen bg-secondary-light font-sans text-secondary">
-      {/* Sidebar */}
       <aside className="w-64 bg-secondary text-white flex flex-col">
         <NavContent />
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
         <header className="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center sticky top-0 z-10">
           <h2 className="text-xl font-semibold text-secondary capitalize">

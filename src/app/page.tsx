@@ -67,15 +67,23 @@ export default function Home() {
           }
 
           // Check admin status for redirect
+          // Only redirect if we are currently on the landing page ("/")
+          // The router.push is inside syncProfile which runs on effect.
+          // This might be redundant if the user is already on dashboard, but since this is page.tsx (root),
+          // it is fine to redirect to dashboard.
           if (profile.is_admin) {
-            router.push('/dashboard/admin');
+            // router.push('/dashboard/admin'); // Removed automatic admin redirect
+            router.push('/dashboard');
           } else {
             router.push('/dashboard');
           }
         }
       }
     }
-    syncProfile();
+    // Only run if we are actually connected and have an address
+    if (isConnected && address) {
+       syncProfile();
+    }
   }, [isConnected, address, router])
 
   return (

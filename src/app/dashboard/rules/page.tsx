@@ -72,68 +72,85 @@ export default function RulesPage() {
   const [allowanceLoading, setAllowanceLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [allowanceInput, setAllowanceInput] = useState(1000); // Default input value
+  const [isFetching, setIsFetching] = useState(true);
+  const [checkingAllowance, setCheckingAllowance] = useState(false);
 
   useEffect(() => {
-    fetchRules();
-    checkRealtimeAllowance();
+    async function loadData() {
+      if (address) {
+        setIsFetching(true);
+        // Start checking allowance immediately
+        setCheckingAllowance(true);
+        await Promise.all([
+          fetchRules(), 
+          checkRealtimeAllowance().finally(() => setCheckingAllowance(false))
+        ]);
+        setIsFetching(false);
+      } else {
+        setIsFetching(false);
+      }
+    }
+    loadData();
   }, [address]);
 
   async function checkRealtimeAllowance() {
-    if (!address) return;
-    
-    try {
-      // 1. Resolve Hedera Account ID from EVM Address or use directly
-      let accountId = address;
-      if (address.startsWith("0x")) {
-         try {
-           const res = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${address}`);
-           const data = await res.json();
-           if (data?.account) accountId = data.account;
-         } catch (e) {
-           console.warn("Mirror node lookup failed:", e);
-           // Try local conversion if fails
-           try {
-             accountId = AccountId.fromEvmAddress(0, 0, address).toString();
-           } catch {}
-         }
+  if (!address) return;
+  
+  try {
+    let accountId = address;
+    if (address.startsWith("0x")) {
+      try {
+        const res = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${address}`);
+        const data = await res.json();
+        if (data?.account) accountId = data.account;
+      } catch (e) {
+        console.warn("Mirror node lookup failed:", e);
+        try {
+          accountId = AccountId.fromEvmAddress(0, 0, address).toString();
+        } catch {}
       }
-
-      // 2. Fetch Allowances from Mirror Node
-      // https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/{id}/allowances/crypto
-      // Note: Mirror Node API returns `amount_granted` which is the ORIGINAL granted amount for some queries,
-      // but for crypto allowances it *should* reflect the current state.
-      // However, if the user says it's not updating, we might need to rely on `amount` if available or check transaction history.
-      // Wait! The field is `amount_granted` in the API response.
-      // BUT, for HBAR (Crypto), the allowance decreases as it is spent.
-      // If the Mirror Node is lagging or caching, it might show the old value.
-      // Let's force a cache bust or check if there is another field.
-      // Actually, standard Mirror Node behavior for /allowances/crypto is to return the CURRENT remaining allowance.
-      // If it returns 10 but user has 2 left, it means the spender has spent 8.
-      // IF the Mirror Node is not updating, it could be a propagation delay.
-      
-      const res = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${accountId}/allowances/crypto?timestamp=${Date.now()}`);
-      const data = await res.json();
-      
-      if (data?.allowances) {
-        const platformAllowance = data.allowances.find((a: any) => a.spender === PLATFORM_SPENDER_ID);
-        if (platformAllowance) {
-          // Mirror Node returns amount in tinybars (1 HBAR = 100,000,000 tinybars)
-          // Ensure we are reading the correct field. The API spec says 'amount_granted' is the current allowance.
-          const remainingHbar = Number(platformAllowance.amount_granted) / 100_000_000;
-          
-          setRules(prev => ({
-            ...prev,
-            allowance_granted: remainingHbar > 0,
-            hbar_allowance_amount: remainingHbar
-          }));
-        } else {
-           setRules(prev => ({ ...prev, allowance_granted: false, hbar_allowance_amount: 0 }));
-        }
-      }
-    } catch (error) {
-      console.error("Failed to fetch realtime allowance:", error);
     }
+
+    // ✅ FIX 1: Hapus ?timestamp=... karena Mirror Node tidak support parameter itu
+    const res = await fetch(
+      `https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${accountId}/allowances/crypto`
+    );
+    const data = await res.json();
+
+    // ✅ FIX 2: Cek error dari Mirror Node sebelum proses data
+    if (data?._status?.messages) {
+      console.error("Mirror Node error:", data._status.messages);
+      return;
+    }
+    
+    if (data?.allowances) {
+      const platformAllowance = data.allowances.find(
+        (a: any) => a.spender === PLATFORM_SPENDER_ID
+      );
+
+      if (platformAllowance) {
+        // Mirror Node returns amount in tinybars (1 HBAR = 100,000,000 tinybars)
+        // Note: Check both 'amount' (new) and 'amount_granted' (legacy/standard) just in case
+        const rawAmount = platformAllowance.amount || platformAllowance.amount_granted || 0;
+        const remainingHbar = Number(rawAmount) / 100_000_000;
+
+        setRules(prev => ({
+          ...prev,
+          allowance_granted: remainingHbar > 0,
+          hbar_allowance_amount: remainingHbar, 
+        }));
+      } else {
+        // If no allowance found for this spender, it means 0
+        setRules(prev => ({ ...prev, allowance_granted: false, hbar_allowance_amount: 0 }));
+      }
+    } else {
+       // If allowances array is empty or undefined
+       setRules(prev => ({ ...prev, allowance_granted: false, hbar_allowance_amount: 0 }));
+    }
+  } catch (error) {
+    console.error("Failed to fetch realtime allowance:", error);
   }
+}
 
   async function fetchRules() {
     if (!address) return;
@@ -294,12 +311,15 @@ export default function RulesPage() {
         await supabase.from("rules").upsert({
           user_id: profile.id,
           allowance_granted: true,
-          hbar_allowance_amount: allowanceInput, 
+          // Removed hbar_allowance_amount as it's now fetched from Mirror Node
           last_allowance_update: new Date().toISOString(),
         });
         
         // Refetch allowance from Mirror Node to confirm exact state
-        setTimeout(() => checkRealtimeAllowance(), 3000); // Give mirror node a moment to index
+        setCheckingAllowance(true);
+        setTimeout(() => {
+          checkRealtimeAllowance().finally(() => setCheckingAllowance(false));
+        }, 3000); // Give mirror node a moment to index
       }
     } catch (err: any) {
       console.error(err);
@@ -336,6 +356,45 @@ export default function RulesPage() {
     setLoading(false);
     setTimeout(() => setMessage(""), 3000);
   }
+
+  const RulesSkeleton = () => (
+    <div className="max-w-5xl mx-auto space-y-10 pb-20 animate-pulse">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="h-8 w-48 bg-gray-200 rounded-lg mb-2"></div>
+          <div className="h-4 w-64 bg-gray-100 rounded-lg"></div>
+        </div>
+        <div className="h-12 w-48 bg-gray-200 rounded-xl"></div>
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-8">
+          <div className="bg-white p-8 rounded-[32px] border border-gray-100">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="h-12 w-12 bg-gray-200 rounded-xl"></div>
+              <div className="space-y-2">
+                <div className="h-6 w-40 bg-gray-200 rounded-lg"></div>
+                <div className="h-4 w-32 bg-gray-100 rounded-lg"></div>
+              </div>
+            </div>
+            
+            <div className="grid sm:grid-cols-2 gap-6">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className={`h-40 bg-gray-50 rounded-2xl border border-gray-100 ${i === 5 ? 'sm:col-span-2' : ''}`}></div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-8">
+          <div className="bg-gray-100 h-[500px] rounded-[32px]"></div>
+          <div className="h-32 bg-white rounded-2xl border border-gray-100"></div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (isFetching) return <RulesSkeleton />;
 
   return (
     <div className="max-w-5xl mx-auto space-y-10 pb-20">
@@ -473,8 +532,13 @@ export default function RulesPage() {
                         {rules.allowance_granted ? "Active" : "Not Configured"}
                       </p>
                       {rules.allowance_granted && (
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          Limit: {rules.hbar_allowance_amount} HBAR
+                        <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
+                          Remaining: 
+                          {checkingAllowance ? (
+                            <span className="h-3 w-12 bg-gray-600 rounded animate-pulse inline-block" />
+                          ) : (
+                            `${rules.hbar_allowance_amount} HBAR`
+                          )}
                         </p>
                       )}
                     </div>

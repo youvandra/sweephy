@@ -63,7 +63,7 @@ createAppKit({
       networks: [hedera]
     })
   ],
-  networks: [hedera, hederaViem],
+  networks: [hedera],
   metadata,
   projectId,
   features: {
