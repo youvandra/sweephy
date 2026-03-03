@@ -617,16 +617,23 @@ Deno.serve(async (req) => {
               try {
                 // getAmountsOut mengembalikan amounts dalam unit masing-masing token:
                 // amounts[0] = HBAR input dalam tinybars (1e8)
-                // amounts[1] = USDC output dalam smallest unit (1e6, karena USDC 6 decimals)
+                // ✅ FIX: Calculate Slippage Dynamic based on user rules
                 const estimatedOut = await getEstimatedAmountOut(client, amountHbar);
                 if (estimatedOut === 0n) {
                   throw new Error("Cannot estimate swap output. Aborting to protect funds.");
                 }
 
-                // Slippage 2% — estimatedOut sudah dalam USDC smallest unit (1e6)
-                const amountOutMin = (estimatedOut * 98n) / 100n;
+                // Get slippage from rules, default to 0.5% if not set
+                // Note: rules.slippage_tolerance is percentage (e.g. 0.5 for 0.5%)
+                const slippagePercent = rules?.slippage_tolerance || 0.5;
+                
+                // Calculate amountOutMin
+                // Formula: amountOutMin = estimatedOut * (1 - slippage/100)
+                // In basis points (10000): amountOutMin = estimatedOut * (10000 - slippage*100) / 10000
+                const slippageBps = BigInt(Math.floor(slippagePercent * 100));
+                const amountOutMin = (estimatedOut * (10000n - slippageBps)) / 10000n;
 
-                console.log(`Swap: ${amountHbar} HBAR → est. ${estimatedOut} uUSDC, min ${amountOutMin} uUSDC`);
+                console.log(`Swap: ${amountHbar} HBAR → est. ${estimatedOut} uUSDC, min ${amountOutMin} uUSDC (slippage: ${slippagePercent}%)`);
 
                 // Resolve EVM address yang benar untuk parameter `to` di contract call.
                 // wallet_address bisa berupa format apapun (0.0.XXXXX, EVM hex, dll).
