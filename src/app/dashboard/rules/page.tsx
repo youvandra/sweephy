@@ -62,7 +62,14 @@ export default function RulesPage() {
   const { walletProvider: evmProvider } = useAppKitProvider("eip155");
   const toast = useToast();
 
-  // State management for trading rules and allowance status
+  const [initialRules, setInitialRules] = useState<{
+    swap_amount: number | string;
+    max_per_swap: number | string;
+    daily_limit: number | string;
+    cooldown_seconds: number | string;
+    slippage_tolerance: number | string;
+  } | null>(null);
+
   const [rules, setRules] = useState<{
     swap_amount: number | string;
     max_per_swap: number | string;
@@ -178,7 +185,16 @@ export default function RulesPage() {
     const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
     if (!profile?.id) return;
     const { data: rulesData } = await supabase.from("rules").select("*").eq("user_id", profile.id).single();
-    if (rulesData) setRules(rulesData);
+    if (rulesData) {
+      setRules(rulesData);
+      setInitialRules({
+        swap_amount: rulesData.swap_amount,
+        max_per_swap: rulesData.max_per_swap,
+        daily_limit: rulesData.daily_limit,
+        cooldown_seconds: rulesData.cooldown_seconds,
+        slippage_tolerance: rulesData.slippage_tolerance,
+      });
+    }
   }
 
   // ─── Transaction Handlers ───────────────────────────────────────────────────
@@ -306,11 +322,27 @@ export default function RulesPage() {
 
     if (userId) {
       await supabase.from("rules").upsert({ user_id: userId, ...rules, updated_at: new Date().toISOString() });
+      setInitialRules({
+        swap_amount: rules.swap_amount,
+        max_per_swap: rules.max_per_swap,
+        daily_limit: rules.daily_limit,
+        cooldown_seconds: rules.cooldown_seconds,
+        slippage_tolerance: rules.slippage_tolerance,
+      });
       toast.success("Settings saved successfully!");
     }
 
     setLoading(false);
   }
+
+  // Check if rules have changed
+  const hasChanges = initialRules ? (
+    rules.swap_amount !== initialRules.swap_amount ||
+    rules.max_per_swap !== initialRules.max_per_swap ||
+    rules.daily_limit !== initialRules.daily_limit ||
+    rules.cooldown_seconds !== initialRules.cooldown_seconds ||
+    rules.slippage_tolerance !== initialRules.slippage_tolerance
+  ) : false;
 
   // ─── Component Render ───────────────────────────────────────────────────────
 
@@ -385,7 +417,7 @@ export default function RulesPage() {
 
             <button
               onClick={handleSave}
-              disabled={loading}
+              disabled={loading || !hasChanges}
               className="w-full bg-secondary text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-secondary/90 hover:shadow-lg hover:shadow-secondary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {loading ? "Saving..." : (<><Save className="w-4 h-4" />Save Configuration</>)}
