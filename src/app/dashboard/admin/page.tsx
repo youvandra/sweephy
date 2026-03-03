@@ -36,7 +36,6 @@ export default function AdminPage() {
     }
     setChecking(true);
     try {
-      console.log("Checking admin status for address:", address);
       
       // Support checking via Hedera ID or EVM Address
       const { data, error } = await supabase
@@ -49,8 +48,6 @@ export default function AdminPage() {
       if (error) {
         console.error("Supabase error checking admin status:", error.message, error.details, error.hint);
       }
-      
-      console.log("Admin check result:", data);
       
       if (data?.is_admin) {
         setIsAdmin(true);

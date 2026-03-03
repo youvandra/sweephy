@@ -89,6 +89,8 @@ export default function AuditPage() {
     const to = from + PAGE_SIZE - 1;
 
     // 2. Query intents with filters
+    // Note: We're querying 'intents' directly since 'intent_logs' doesn't seem to exist
+    // and 'intents' table likely contains the transaction history we need.
     let query = supabase
       .from("intents")
       .select("*, devices(name)", { count: 'exact' })
@@ -146,25 +148,20 @@ export default function AuditPage() {
     
     if (deviceIds.length === 0) return;
 
-    // 2. Get intent IDs (respecting status filter)
-    let intentQuery = supabase.from('intents').select('id').in('device_id', deviceIds);
+    // 2. Get Intents (respecting status filter & search & date)
+    // We query the 'intents' table directly as it holds the transaction records
+    let query = supabase
+      .from("intents")
+      .select("*, devices(name)")
+      .in('device_id', deviceIds)
+      .order("created_at", { ascending: false });
+
     if (filterStatus !== 'all') {
-        intentQuery = intentQuery.eq('status', filterStatus);
+        query = query.eq('status', filterStatus);
     }
 
-    const { data: userIntents } = await intentQuery;
-    const intentIds = userIntents?.map(i => i.id) || [];
-    if (intentIds.length === 0) return;
-
-    // 3. Get Logs (respecting search & date)
-    let query = supabase
-      .from("intent_logs")
-      .select("*, intents(*, devices(name))")
-      .in('intent_id', intentIds)
-      .order("timestamp", { ascending: false });
-
     if (searchTerm) {
-      query = query.ilike('tx_hash', `%${searchTerm}%`);
+      query = query.or(`tx_hash.ilike.%${searchTerm}%,pair.ilike.%${searchTerm}%`);
     }
 
     if (filterDate) {
@@ -172,28 +169,38 @@ export default function AuditPage() {
       startDate.setHours(0, 0, 0, 0);
       const endDate = new Date(filterDate);
       endDate.setHours(23, 59, 59, 999);
-      query = query.gte('timestamp', startDate.toISOString()).lte('timestamp', endDate.toISOString());
+      query = query.gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString());
     }
 
-    const { data } = await query;
+    const { data, error } = await query;
+
+    if (error) {
+       console.error("Export error:", error);
+       toast.error("Failed to export logs.");
+       return;
+    }
 
     if (!data || data.length === 0) {
-      toast.info("No logs found to export with current filters.");
-      return;
+       // Only show toast if we were specifically filtering for something and found nothing.
+       if (filterStatus !== 'all' || deviceIds.length < (await supabase.from('devices').select('id', { count: 'exact', head: true }).eq('user_id', userId)).count!) {
+          toast.info("No matching logs found to export.");
+       } else {
+          toast.info("No transaction history found for your account.");
+       }
+       return;
     }
 
     // Convert to CSV
     const csvContent = [
-      ["Timestamp", "Device", "Action", "Pair", "Amount", "Signed By", "Tx Hash", "Status"],
+      ["Timestamp", "Device", "Action", "Pair", "Amount", "Tx Hash", "Status"],
       ...data.map(log => [
-        new Date(log.timestamp).toISOString(),
-        log.intents?.devices?.name || "Unknown",
-        log.intents?.action,
-        log.intents?.pair,
-        log.intents?.amount,
-        log.signed_by,
+        new Date(log.created_at).toISOString(),
+        log.devices?.name || "Unknown",
+        log.action,
+        log.pair,
+        log.amount,
         log.tx_hash,
-        log.intents?.status
+        log.status
       ])
     ].map(e => e.join(",")).join("\n");
 
