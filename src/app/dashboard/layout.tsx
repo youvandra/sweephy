@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { LayoutDashboard, Tablet, Settings, ShieldCheck, LogOut, ArrowRightLeft, Activity, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 
 import { useAppKitAccount, useAppKit, useDisconnect } from '@reown/appkit/react'
 import { useRouter } from 'next/navigation'
@@ -101,10 +102,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const NavContent = () => (
     <>
       <div className="p-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2 text-primary">
-          <Activity className="w-8 h-8" />
-          Sweephy
-        </h1>
+        <div className="flex items-center gap-2">
+          <Image 
+            src="/Logos/Logo_all-white.png" 
+            alt="Sweephy" 
+            width={140} 
+            height={40} 
+            className="h-8 w-auto"
+            priority
+          />
+        </div>
       </div>
       
       <nav className="flex-1 px-4 py-4 space-y-1">
@@ -139,7 +146,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-secondary-light font-sans text-secondary">
       {/* Sidebar */}
       <aside className="w-64 bg-secondary text-white flex flex-col">
         <NavContent />

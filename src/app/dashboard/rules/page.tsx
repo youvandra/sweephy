@@ -14,6 +14,36 @@ import {
 } from "@hashgraph/sdk";
 import { useAppKitProvider } from "@reown/appkit/react";
 
+const RuleInput = ({ label, value, onChange, icon: Icon, suffix, description, placeholder }: any) => (
+  <div className="space-y-3 bg-white p-5 rounded-2xl border border-secondary/10 hover:border-primary/50 transition-colors group">
+    <div className="flex justify-between items-start">
+      <label className="text-sm font-bold text-secondary flex items-center gap-2">
+        <div className="p-2 bg-secondary-light rounded-lg text-secondary group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+          <Icon className="w-4 h-4" />
+        </div>
+        {label}
+      </label>
+      {suffix && <span className="text-xs font-bold text-alt-1 bg-secondary-light px-2 py-1 rounded-md">{suffix}</span>}
+    </div>
+    
+    <div className="relative">
+      <input 
+        type="number" 
+        value={value} 
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full px-4 py-3 bg-secondary-light/50 border border-transparent rounded-xl font-bold text-secondary focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all placeholder:text-alt-2"
+        placeholder={placeholder}
+      />
+    </div>
+    
+    {description && (
+      <p className="text-xs text-alt-1 leading-relaxed">
+        {description}
+      </p>
+    )}
+  </div>
+);
+
 export default function RulesPage() {
   const { address, isConnected } = useAppKitAccount();
   const { switchNetwork } = useAppKitNetwork();
@@ -45,7 +75,65 @@ export default function RulesPage() {
 
   useEffect(() => {
     fetchRules();
+    checkRealtimeAllowance();
   }, [address]);
+
+  async function checkRealtimeAllowance() {
+    if (!address) return;
+    
+    try {
+      // 1. Resolve Hedera Account ID from EVM Address or use directly
+      let accountId = address;
+      if (address.startsWith("0x")) {
+         try {
+           const res = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${address}`);
+           const data = await res.json();
+           if (data?.account) accountId = data.account;
+         } catch (e) {
+           console.warn("Mirror node lookup failed:", e);
+           // Try local conversion if fails
+           try {
+             accountId = AccountId.fromEvmAddress(0, 0, address).toString();
+           } catch {}
+         }
+      }
+
+      // 2. Fetch Allowances from Mirror Node
+      // https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/{id}/allowances/crypto
+      // Note: Mirror Node API returns `amount_granted` which is the ORIGINAL granted amount for some queries,
+      // but for crypto allowances it *should* reflect the current state.
+      // However, if the user says it's not updating, we might need to rely on `amount` if available or check transaction history.
+      // Wait! The field is `amount_granted` in the API response.
+      // BUT, for HBAR (Crypto), the allowance decreases as it is spent.
+      // If the Mirror Node is lagging or caching, it might show the old value.
+      // Let's force a cache bust or check if there is another field.
+      // Actually, standard Mirror Node behavior for /allowances/crypto is to return the CURRENT remaining allowance.
+      // If it returns 10 but user has 2 left, it means the spender has spent 8.
+      // IF the Mirror Node is not updating, it could be a propagation delay.
+      
+      const res = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${accountId}/allowances/crypto?timestamp=${Date.now()}`);
+      const data = await res.json();
+      
+      if (data?.allowances) {
+        const platformAllowance = data.allowances.find((a: any) => a.spender === PLATFORM_SPENDER_ID);
+        if (platformAllowance) {
+          // Mirror Node returns amount in tinybars (1 HBAR = 100,000,000 tinybars)
+          // Ensure we are reading the correct field. The API spec says 'amount_granted' is the current allowance.
+          const remainingHbar = Number(platformAllowance.amount_granted) / 100_000_000;
+          
+          setRules(prev => ({
+            ...prev,
+            allowance_granted: remainingHbar > 0,
+            hbar_allowance_amount: remainingHbar
+          }));
+        } else {
+           setRules(prev => ({ ...prev, allowance_granted: false, hbar_allowance_amount: 0 }));
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch realtime allowance:", error);
+    }
+  }
 
   async function fetchRules() {
     if (!address) return;
@@ -210,7 +298,8 @@ export default function RulesPage() {
           last_allowance_update: new Date().toISOString(),
         });
         
-        setRules(prev => ({ ...prev, allowance_granted: true, hbar_allowance_amount: allowanceInput }));
+        // Refetch allowance from Mirror Node to confirm exact state
+        setTimeout(() => checkRealtimeAllowance(), 3000); // Give mirror node a moment to index
       }
     } catch (err: any) {
       console.error(err);
@@ -248,183 +337,189 @@ export default function RulesPage() {
     setTimeout(() => setMessage(""), 3000);
   }
 
-  const RuleInput = ({ label, value, onChange, icon: Icon, suffix }: any) => (
-    <div className="space-y-2">
-      <label className="text-sm font-bold text-secondary flex items-center gap-2">
-        <Icon className="w-4 h-4 text-primary" />
-        {label}
-      </label>
-      <div className="relative">
-        <input 
-          type="number" 
-          value={value} 
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="w-full pl-4 pr-12 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
-        />
-        {suffix && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs uppercase">{suffix}</span>}
-      </div>
-    </div>
-  );
-
   return (
-    <div className="max-w-4xl space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-secondary">Rules & Compliance</h1>
-        <p className="text-gray-500 text-sm">Configure automated swap enforcement and security policies</p>
+    <div className="max-w-5xl mx-auto space-y-10 pb-20">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-secondary">Rules & Limits</h1>
+          <p className="text-alt-1 mt-1">Configure your automated trading parameters and security thresholds.</p>
+        </div>
+        <button 
+          onClick={handleSave}
+          disabled={loading}
+          className="bg-secondary text-white px-8 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-secondary/90 hover:shadow-lg hover:shadow-secondary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        >
+          {loading ? "Saving..." : (
+            <>
+              <Save className="w-4 h-4" />
+              Save Configuration
+            </>
+          )}
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Trading Rules */}
-        <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm space-y-6">
-          <h3 className="font-bold flex items-center gap-2 border-b pb-4">
-            <Shield className="w-5 h-5 text-primary" />
-            Swap Enforcement
-          </h3>
-          
-            {/* Swap Amount Rule */}
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-secondary flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-primary" />
-                Amount per Click (HBAR)
-              </label>
-              <input 
-                type="number" 
-                value={rules.swap_amount}
-                onChange={(e) => setRules({ ...rules, swap_amount: Number(e.target.value) })}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-lg focus:ring-2 focus:ring-primary outline-none"
-              />
-              <p className="text-xs text-gray-400">How much HBAR to swap each time you press the device button.</p>
-            </div>
+      {message && (
+        <div className="bg-primary/10 border border-primary/20 text-secondary px-6 py-4 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4">
+          <CheckCircle2 className="w-5 h-5 text-primary" />
+          <p className="font-medium">{message}</p>
+        </div>
+      )}
 
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-secondary flex items-center gap-2">
-                <Shield className="w-4 h-4 text-primary" />
-                Max per Swap Limit
-              </label>
-              <input 
-                type="number" 
-                value={rules.max_per_swap}
-                onChange={(e) => setRules({ ...rules, max_per_swap: Number(e.target.value) })}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-mono text-xs focus:ring-2 focus:ring-primary outline-none"
-              />
+      <div className="grid lg:grid-cols-3 gap-8">
+        {/* Main Trading Rules */}
+        <div className="lg:col-span-2 space-y-8">
+          <section className="bg-white p-8 rounded-[32px] border border-secondary/5 shadow-sm">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="p-3 bg-primary/10 rounded-xl text-primary">
+                <Shield className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-secondary">Trading Parameters</h3>
+                <p className="text-sm text-alt-1">Control how your device executes swaps</p>
+              </div>
             </div>
-          <RuleInput 
-            label="Daily Allowance" 
-            value={rules.daily_limit} 
-            onChange={(v: number) => setRules({...rules, daily_limit: v})}
-            icon={Shield}
-            suffix="HBAR"
-          />
-          <RuleInput 
-            label="Swap Cooldown" 
-            value={rules.cooldown_seconds} 
-            onChange={(v: number) => setRules({...rules, cooldown_seconds: v})}
-            icon={Clock}
-            suffix="SEC"
-          />
-          <RuleInput 
-            label="Slippage Tolerance" 
-            value={rules.slippage_tolerance} 
-            onChange={(v: number) => setRules({...rules, slippage_tolerance: v})}
-            icon={Percent}
-            suffix="%"
-          />
+            
+            <div className="grid sm:grid-cols-2 gap-6">
+              <RuleInput 
+                label="Amount per Click" 
+                value={rules.swap_amount}
+                onChange={(v: number) => setRules({ ...rules, swap_amount: v })}
+                icon={DollarSign}
+                suffix="HBAR"
+                description="The exact amount of HBAR to swap when you press the physical button."
+                placeholder="50"
+              />
+
+              <RuleInput 
+                label="Max per Swap" 
+                value={rules.max_per_swap}
+                onChange={(v: number) => setRules({ ...rules, max_per_swap: v })}
+                icon={Shield}
+                suffix="HBAR"
+                description="Hard limit for a single transaction to prevent accidental large swaps."
+                placeholder="100"
+              />
+
+              <RuleInput 
+                label="Daily Limit" 
+                value={rules.daily_limit} 
+                onChange={(v: number) => setRules({...rules, daily_limit: v})}
+                icon={Wallet}
+                suffix="HBAR"
+                description="Maximum total HBAR volume allowed within a 24-hour period."
+                placeholder="1000"
+              />
+
+              <RuleInput 
+                label="Cooldown" 
+                value={rules.cooldown_seconds} 
+                onChange={(v: number) => setRules({...rules, cooldown_seconds: v})}
+                icon={Clock}
+                suffix="SECONDS"
+                description="Minimum time interval required between two consecutive swaps."
+                placeholder="60"
+              />
+              
+              <div className="sm:col-span-2">
+                <RuleInput 
+                  label="Slippage Tolerance" 
+                  value={rules.slippage_tolerance} 
+                  onChange={(v: number) => setRules({...rules, slippage_tolerance: v})}
+                  icon={Percent}
+                  suffix="%"
+                  description="Your transaction will revert if the price changes unfavorably by more than this percentage."
+                  placeholder="0.5"
+                />
+              </div>
+            </div>
+          </section>
         </div>
 
-        {/* Security / KMS */}
+        {/* Allowance / Security Section */}
         <div className="space-y-8">
-          <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm space-y-6">
-            <h3 className="font-bold flex items-center gap-2 border-b pb-4">
-              <Wallet className="w-5 h-5 text-primary" />
-              Automated Signing
-            </h3>
-            <p className="text-sm text-gray-500 leading-relaxed">
-              To enable 1-tap swaps, you must grant an allowance to the Sweephy Platform Key. 
-              This allows our secure AWS KMS to sign swap transactions on your behalf within your set limits.
-            </p>
+          <section className="bg-secondary text-white p-8 rounded-[32px] relative overflow-hidden">
+            {/* Background Pattern */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+            
+            <div className="relative z-10">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-3 bg-white/10 rounded-xl text-primary backdrop-blur-sm">
+                  <Wallet className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">Allowance</h3>
+                  <p className="text-sm text-gray-400">Required for automation</p>
+                </div>
+              </div>
 
-            <div className="space-y-4 pt-2">
-              <div className={`p-5 rounded-2xl border flex flex-col gap-4 transition-all ${
-                rules.allowance_granted ? "bg-green-50 border-green-100" : "bg-primary/5 border-primary/10"
-              }`}>
-                <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-300 leading-relaxed mb-8">
+                You must grant an allowance to the Sweephy Platform Key. This enables our secure AWS KMS to sign swap transactions on your behalf without exposing your private key.
+              </p>
+
+              <div className="space-y-4">
+                <div className={`p-4 rounded-2xl border transition-all ${
+                  rules.allowance_granted 
+                    ? "bg-primary/10 border-primary/30" 
+                    : "bg-red-500/10 border-red-500/30"
+                }`}>
                   <div className="flex items-center gap-3">
                     {rules.allowance_granted ? (
-                      <CheckCircle2 className="w-6 h-6 text-green-500" />
+                      <CheckCircle2 className="w-5 h-5 text-primary" />
                     ) : (
-                      <AlertCircle className="w-6 h-6 text-primary" />
+                      <AlertCircle className="w-5 h-5 text-red-400" />
                     )}
                     <div>
-                      <p className="text-sm font-bold text-secondary uppercase tracking-wide">
-                        {rules.allowance_granted ? "Allowance Active" : "Setup Required"}
+                      <p className={`text-sm font-bold ${rules.allowance_granted ? "text-primary" : "text-red-400"}`}>
+                        {rules.allowance_granted ? "Active" : "Not Configured"}
                       </p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {rules.allowance_granted 
-                          ? `${rules.hbar_allowance_amount} HBAR allowance granted` 
-                          : "Grant allowance to enable device swaps"}
-                      </p>
+                      {rules.allowance_granted && (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Limit: {rules.hbar_allowance_amount} HBAR
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Set Total Allowance</label>
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Update Allowance</label>
                   <div className="relative">
                     <input 
                       type="number" 
                       value={allowanceInput}
                       onChange={(e) => setAllowanceInput(Number(e.target.value))}
-                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl font-bold text-secondary focus:ring-2 focus:ring-primary outline-none"
-                      placeholder="Enter amount (e.g. 1000)"
+                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl font-bold text-white focus:bg-white/10 focus:border-primary outline-none transition-all placeholder:text-gray-600"
+                      placeholder="Amount"
                     />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">HBAR</span>
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500">HBAR</span>
                   </div>
-                  <p className="text-[10px] text-gray-400">
-                    This is the maximum total HBAR the platform can spend on your behalf. You can increase or decrease this at any time.
-                  </p>
                 </div>
-                
+
                 <button 
                   onClick={handleGrantAllowance}
                   disabled={allowanceLoading}
-                  className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
-                    rules.allowance_granted 
-                      ? "bg-white text-green-700 border border-green-200 hover:bg-green-50" 
-                      : "bg-secondary text-white shadow-lg shadow-secondary/20 hover:bg-secondary/90"
-                  }`}
+                  className="w-full bg-primary text-secondary py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed mt-4 cursor-pointer"
                 >
-                  {allowanceLoading ? "Processing..." : rules.allowance_granted ? "Update Allowance Limit" : (
+                  {allowanceLoading ? "Processing..." : (
                     <>
-                      Grant Allowance <ArrowRight className="w-4 h-4" />
+                      {rules.allowance_granted ? "Update Limit" : "Grant Allowance"}
+                      <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
               </div>
-              
-              {!rules.allowance_granted && (
-                <div className="flex gap-3 p-3 bg-amber-50 border border-amber-100 rounded-xl">
-                  <Info className="w-5 h-5 text-amber-600 shrink-0" />
-                  <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
-                    Without allowance, your ESP32 device cannot execute trades. The physical button will trigger a "Failed" response until this is set up.
-                  </p>
-                </div>
-              )}
             </div>
-          </div>
+          </section>
 
-          <button 
-            onClick={handleSave}
-            disabled={loading}
-            className="w-full bg-secondary text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-secondary/90 transition-colors shadow-lg shadow-secondary/20"
-          >
-            {loading ? "Saving..." : (
-              <>
-                <Save className="w-5 h-5" />
-                Save All Changes
-              </>
-            )}
-          </button>
-          {message && <p className="text-center text-primary font-bold animate-pulse text-sm">{message}</p>}
+          <div className="p-6 rounded-2xl bg-white border border-secondary/5 shadow-sm">
+            <h4 className="font-bold text-secondary mb-2 flex items-center gap-2">
+              <Info className="w-4 h-4 text-alt-1" />
+              Did you know?
+            </h4>
+            <p className="text-sm text-alt-1 leading-relaxed">
+              Allowances are the safest way to delegate signing rights. You can revoke or change this limit at any time directly from this dashboard or any Hedera wallet explorer.
+            </p>
+          </div>
         </div>
       </div>
     </div>

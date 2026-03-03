@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { Activity, Shield, Zap, Tablet, Wallet } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 import { useAppKit, useAppKitAccount } from '@reown/appkit/react'
 import { useRouter } from 'next/navigation'
@@ -81,9 +82,15 @@ export default function Home() {
     <div className="min-h-screen bg-white font-sans text-secondary">
       {/* Navigation */}
       <nav className="flex items-center justify-between px-8 py-6 max-w-7xl mx-auto">
-        <div className="flex items-center gap-2 text-2xl font-bold text-primary">
-          <Activity className="w-8 h-8" />
-          Sweephy
+        <div className="flex items-center gap-2">
+          <Image 
+            src="/Logos/Logo_mark-green_text-black.png" 
+            alt="Sweephy" 
+            width={140} 
+            height={40} 
+            className="h-10 w-auto"
+            priority
+          />
         </div>
         <div className="hidden md:flex items-center gap-8 font-medium">
           <a href="#features" className="hover:text-primary transition-colors">Features</a>
@@ -107,7 +114,7 @@ export default function Home() {
           <h1 className="text-6xl lg:text-7xl font-bold leading-tight">
             1-Tap Swaps for <span className="text-primary">ESP32</span> Devices.
           </h1>
-          <p className="text-xl text-gray-500 max-w-lg leading-relaxed">
+          <p className="text-xl text-alt-1 max-w-lg leading-relaxed">
             Secure, auditable, and hardware-bound crypto trading. Connect your ESP32 device, set your rules, and swap with a single physical click.
           </p>
         </div>
@@ -131,13 +138,13 @@ export default function Home() {
               </div>
             </div>
             {/* ESP32 Floating Card */}
-            <div className="absolute -bottom-10 -left-10 bg-white p-6 rounded-3xl shadow-2xl border border-gray-100 animate-bounce-slow">
+            <div className="absolute -bottom-10 -left-10 bg-white p-6 rounded-3xl shadow-2xl border border-secondary-medium animate-bounce-slow">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-primary/10 rounded-2xl text-primary">
                   <Tablet className="w-8 h-8" />
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Device Active</p>
+                  <p className="text-xs text-alt-2 font-bold uppercase tracking-wider">Device Active</p>
                   <p className="font-bold text-secondary">ESP32-S3 Node</p>
                 </div>
               </div>
@@ -147,11 +154,11 @@ export default function Home() {
       </section>
 
       {/* Features */}
-      <section id="features" className="bg-gray-50 py-24 px-8">
+      <section id="features" className="bg-secondary-light py-24 px-8">
         <div className="max-w-7xl mx-auto space-y-16">
           <div className="text-center space-y-4">
             <h2 className="text-4xl font-bold">Built for Security & Speed</h2>
-            <p className="text-gray-500">Enterprise-grade infrastructure for your personal desktop trading device.</p>
+            <p className="text-alt-1">Enterprise-grade infrastructure for your personal desktop trading device.</p>
           </div>
           
           <div className="grid md:grid-cols-3 gap-8">
@@ -160,12 +167,12 @@ export default function Home() {
               { icon: Wallet, title: "Multi-Wallet", desc: "Support for HashPack, WalletConnect, and custodial KMS wallets for maximum flexibility." },
               { icon: Activity, title: "Real-time Audits", desc: "Every intent, signature, and transaction is logged in an immutable Postgres trail." },
             ].map((feature, i) => (
-              <div key={i} className="bg-white p-10 rounded-[32px] border border-gray-100 hover:shadow-xl transition-all group">
+              <div key={i} className="bg-white p-10 rounded-[32px] border border-secondary-medium hover:shadow-xl transition-all group">
                 <div className="p-4 bg-primary/10 rounded-2xl text-primary w-fit mb-6 group-hover:bg-primary group-hover:text-white transition-colors">
                   <feature.icon className="w-8 h-8" />
                 </div>
                 <h3 className="text-2xl font-bold mb-4">{feature.title}</h3>
-                <p className="text-gray-500 leading-relaxed">{feature.desc}</p>
+                <p className="text-alt-1 leading-relaxed">{feature.desc}</p>
               </div>
             ))}
           </div>
@@ -173,14 +180,19 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 px-8 border-t border-gray-100">
+      <footer className="py-12 px-8 border-t border-secondary-medium">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
-          <div className="flex items-center gap-2 text-xl font-bold text-primary">
-            <Activity className="w-6 h-6" />
-            Sweephy
+          <div className="flex items-center gap-2">
+            <Image 
+              src="/Logos/Logo_mark-green_text-black.png" 
+              alt="Sweephy" 
+              width={140} 
+              height={40} 
+              className="h-8 w-auto"
+            />
           </div>
-          <p className="text-gray-400 text-sm">© 2026 Sweephy Protocol. Production Ready.</p>
-          <div className="flex gap-6 text-sm font-medium text-gray-500">
+          <p className="text-alt-2 text-sm">© 2026 Sweephy Protocol. Production Ready.</p>
+          <div className="flex gap-6 text-sm font-medium text-alt-1">
             <a href="#" className="hover:text-primary transition-colors">Terms</a>
             <a href="#" className="hover:text-primary transition-colors">Privacy</a>
             <a href="#" className="hover:text-primary transition-colors">Github</a>
