@@ -21,21 +21,32 @@ export default function AuditPage() {
   const [filterDevice, setFilterDevice] = useState("all");
   const [filterDate, setFilterDate] = useState("");
   const [devices, setDevices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // ─── Data Fetching ───────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (address) {
       fetchLogs();
       fetchDevices();
+    } else {
+      setLoading(false);
     }
   }, [address, currentPage, searchTerm, filterStatus, filterDevice, filterDate]); 
 
+  /**
+   * Resolves the current wallet address to a Supabase user ID.
+   * Supports both EVM addresses and Hedera Account IDs.
+   */
   async function getProfileId() {
     if (!address) return null;
-    // Match EVM or Hedera ID
     const { data } = await supabase.from("profiles").select("id").or(`wallet_address.ilike.${address},wallet_address.eq.${address}`).limit(1).maybeSingle();
     return data?.id;
   }
 
+  /**
+   * Fetches the list of devices associated with the current user for the filter dropdown.
+   */
   async function fetchDevices() {
     const userId = await getProfileId();
     if (!userId) return;
@@ -43,11 +54,19 @@ export default function AuditPage() {
     setDevices(data || []);
   }
 
+  /**
+   * Fetches audit logs from the 'intents' table with pagination and filters.
+   * This is the main data source for the table.
+   */
   async function fetchLogs() {
+    setLoading(true);
     const userId = await getProfileId();
-    if (!userId) return;
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
 
-    // 1. Get device IDs (respecting filter)
+    // 1. Resolve Device IDs based on filter
     let deviceIds: string[] = [];
     if (filterDevice !== 'all') {
       deviceIds = [filterDevice];
@@ -59,14 +78,15 @@ export default function AuditPage() {
     if (deviceIds.length === 0) {
       setLogs([]);
       setTotalCount(0);
+      setLoading(false);
       return;
     }
 
-    // Calculate range for pagination
+    // Calculate pagination range
     const from = (currentPage - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
-    // 2. Query intents directly
+    // 2. Query intents with filters
     let query = supabase
       .from("intents")
       .select("*, devices(name)", { count: 'exact' })
@@ -79,7 +99,7 @@ export default function AuditPage() {
     }
 
     if (searchTerm) {
-      // Search by tx_hash (now in intents) or pair/action
+      // Search by Transaction Hash or Pair
       query = query.or(`tx_hash.ilike.%${searchTerm}%,pair.ilike.%${searchTerm}%`);
     }
 
@@ -94,14 +114,19 @@ export default function AuditPage() {
     const { data, count, error } = await query;
     
     if (error) {
-      console.error("Error fetching logs:", error);
+      setLoading(false);
       return;
     }
 
     setLogs(data || []);
     if (count !== null) setTotalCount(count);
+    setLoading(false);
   }
 
+  /**
+   * Exports ALL matching logs (without pagination) to a CSV file.
+   * Respects all currently active filters.
+   */
   async function handleExportCSV() {
     const userId = await getProfileId();
     if (!userId) return;
@@ -192,6 +217,26 @@ export default function AuditPage() {
     }
   };
 
+  const TableSkeleton = () => (
+    <div className="w-full bg-white rounded-[24px] border border-gray-100 shadow-sm overflow-hidden animate-pulse">
+      <div className="p-6 border-b border-gray-100 flex items-center gap-4">
+        <div className="h-10 bg-gray-100 rounded-xl w-full"></div>
+      </div>
+      <div className="p-6 space-y-4">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="flex items-center justify-between gap-4">
+            <div className="h-4 bg-gray-100 rounded w-24"></div>
+            <div className="h-4 bg-gray-100 rounded w-32"></div>
+            <div className="h-4 bg-gray-100 rounded w-20"></div>
+            <div className="h-4 bg-gray-100 rounded w-16"></div>
+            <div className="h-4 bg-gray-100 rounded w-24"></div>
+            <div className="h-4 bg-gray-100 rounded w-24"></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -267,6 +312,7 @@ export default function AuditPage() {
         </div>
       )}
 
+      {loading ? <TableSkeleton /> : (
       <div className="bg-white rounded-[24px] border border-gray-100 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex items-center gap-4">
           <div className="relative flex-1">
@@ -400,6 +446,7 @@ export default function AuditPage() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
