@@ -222,9 +222,6 @@ export default function DevicesPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
       {/* Rename Device Modal */}
       {editingDevice && (
@@ -328,7 +325,7 @@ export default function DevicesPage() {
                           }`}
                         >
                           <Power className="w-3 h-3" />
-                          {isDisabled ? "Turn On" : "Turn Off"}
+                          {isDisabled ? "Enable" : "Disable"}
                         </button>
                         <button 
                           onClick={() => setDeviceToDelete(device)}
@@ -345,4 +342,7 @@ export default function DevicesPage() {
           )}
         </>
       )}
+    </div>
+  );
+}
 
