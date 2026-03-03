@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { LayoutDashboard, Tablet, Settings, ShieldCheck, LogOut, ArrowRightLeft, Activity, ShieldAlert } from "lucide-react";
+import { LayoutDashboard, Tablet, Settings, ShieldCheck, LogOut, ArrowRight, Activity, ShieldAlert, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
@@ -119,7 +119,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="p-6">
         <div className="flex items-center gap-2">
           <Image 
-            src="/Logos/Logo_all-white.png" 
+            src="/Logos/Logo_all-white.webp" 
             alt="Sweephy" 
             width={196} 
             height={56} 
@@ -168,17 +168,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <main className="flex-1 overflow-y-auto">
         <header className="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center sticky top-0 z-10">
-          <h2 className="text-xl font-semibold text-secondary capitalize">
-            {pathname.split("/").pop() || "Dashboard"}
-          </h2>
+          <div className="group relative overflow-hidden bg-secondary text-white px-6 py-2.5 rounded-2xl cursor-pointer transition-all hover:shadow-xl hover:shadow-primary/20 hover:scale-[1.02] border border-white/10">
+            {/* Background Effects */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/20 blur-2xl rounded-full -mr-10 -mt-10" />
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-purple-500/20 blur-2xl rounded-full -ml-8 -mb-8" />
+            
+            {/* Content */}
+            <div className="flex items-center gap-3 relative z-10">
+              <div className="bg-white/10 p-1.5 rounded-lg backdrop-blur-sm">
+                <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+              </div>
+              <div className="flex flex-col leading-none gap-1">
+                <p className="text-[10px] font-bold text-primary tracking-widest uppercase">Limited Offer</p>
+                <p className="text-sm font-bold text-white flex items-center gap-1.5">
+                  Get <span className="text-primary">50% OFF</span> Sweephy Product
+                </p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-white/50 ml-2 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </div>
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium text-secondary">
-                {hederaId ? hederaId : (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Connecting...')}
+              <p className="text-sm font-bold text-secondary">
+                {hederaId || (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Connecting...')}
               </p>
-              <p className="text-xs text-gray-500">Hedera Mainnet</p>
+              <div className="flex items-center justify-end gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Hedera Mainnet</p>
+              </div>
             </div>
-            <div className="w-10 h-10 bg-primary/20 rounded-full flex items-center justify-center text-primary font-bold">
+            <div className="w-10 h-10 bg-primary/10 rounded-xl border border-primary/20 flex items-center justify-center text-primary font-black shadow-sm">
               {address?.[0]?.toUpperCase() || 'W'}
             </div>
           </div>

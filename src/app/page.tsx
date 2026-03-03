@@ -92,7 +92,7 @@ export default function Home() {
       <nav className="flex items-center justify-between px-8 py-6 max-w-7xl mx-auto">
         <div className="flex items-center gap-2">
           <Image 
-            src="/Logos/Logo_mark-green_text-black.png" 
+            src="/Logos/Logo_mark-green_text-black.webp" 
             alt="Sweephy" 
             width={196} 
             height={56} 
@@ -192,7 +192,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="flex items-center gap-2">
             <Image 
-              src="/Logos/Logo_mark-green_text-black.png" 
+              src="/Logos/Logo_mark-green_text-black.webp" 
               alt="Sweephy" 
               width={196} 
               height={56} 
