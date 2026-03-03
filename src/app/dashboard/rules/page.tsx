@@ -41,6 +41,7 @@ export default function RulesPage() {
   const [loading, setLoading] = useState(false);
   const [allowanceLoading, setAllowanceLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [allowanceInput, setAllowanceInput] = useState(1000); // Default input value
 
   useEffect(() => {
     fetchRules();
@@ -70,13 +71,37 @@ export default function RulesPage() {
       console.log("Spender (Platform KMS):", PLATFORM_SPENDER_ID);
       
       // Use generic provider which will be HederaAdapter due to our config
-      const provider = (hederaProvider || evmProvider) as any;
+      let provider = hederaProvider as any;
+      
+      // If hedera provider is missing (connected via eip155), try to switch or use EVM provider
+      if (!provider && evmProvider) {
+         console.log("Hedera provider missing. Connected via EIP-155.");
+         console.log("Attempting to switch network to Hedera Native (hedera:mainnet)...");
+         
+         try {
+             // Try to switch network using AppKit
+             // 'hedera:mainnet' is the CAIP-2 chainId for Hedera Mainnet
+             await switchNetwork({ chainNamespace: 'hedera', chainId: 'hedera:mainnet' } as any);
+             
+             // Wait a moment for provider to update?
+             // Actually, switchNetwork might reload the page or update the hook.
+             // But if we proceed, we might still be on the old provider reference.
+             
+             // Let's assume the switch works or the user is prompted.
+             // If switch is not supported or fails, we fall back to the EVM provider 
+             // BUT we must acknowledge that 'hedera_signAndExecuteTransaction' will fail on EIP-155 RPC
+             provider = evmProvider;
+         } catch (switchErr) {
+             console.warn("Network switch failed or cancelled:", switchErr);
+             provider = evmProvider;
+         }
+      }
       
       if (!provider) {
           throw new Error("Wallet provider not initialized. Please connect your wallet.");
       }
       
-      // If we are using the EVM provider (HashPack connected via eip155), we need to be careful.
+      // If we are still using the EVM provider (HashPack connected via eip155), we need to be careful.
       // The error 400 suggests we are sending a method (hedera_signAndExecuteTransaction) to an endpoint that expects standard JSON-RPC.
       // However, HashPack SHOULD intercept this method client-side.
       
@@ -103,8 +128,10 @@ export default function RulesPage() {
        const spenderId = AccountId.fromString(PLATFORM_SPENDER_ID);
        const ownerId = AccountId.fromString(address as string); 
        
+       console.log(`Granting Allowance... Owner: ${ownerId.toString()}, Spender: ${spenderId.toString()}, Amount: ${allowanceInput}`);
+
        const allowanceTx = new AccountAllowanceApproveTransaction()
-          .approveHbarAllowance(ownerId, spenderId, Hbar.from(1000, HbarUnit.Hbar))
+          .approveHbarAllowance(ownerId, spenderId, Hbar.from(allowanceInput, HbarUnit.Hbar))
           .setTransactionId(TransactionId.generate(ownerId))
           .freezeWith(client);
         
@@ -179,11 +206,11 @@ export default function RulesPage() {
         await supabase.from("rules").upsert({
           user_id: profile.id,
           allowance_granted: true,
-          hbar_allowance_amount: 1000, 
+          hbar_allowance_amount: allowanceInput, 
           last_allowance_update: new Date().toISOString(),
         });
         
-        setRules(prev => ({ ...prev, allowance_granted: true, hbar_allowance_amount: 1000 }));
+        setRules(prev => ({ ...prev, allowance_granted: true, hbar_allowance_amount: allowanceInput }));
       }
     } catch (err: any) {
       console.error(err);
@@ -338,6 +365,23 @@ export default function RulesPage() {
                       </p>
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Set Total Allowance</label>
+                  <div className="relative">
+                    <input 
+                      type="number" 
+                      value={allowanceInput}
+                      onChange={(e) => setAllowanceInput(Number(e.target.value))}
+                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl font-bold text-secondary focus:ring-2 focus:ring-primary outline-none"
+                      placeholder="Enter amount (e.g. 1000)"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">HBAR</span>
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    This is the maximum total HBAR the platform can spend on your behalf. You can increase or decrease this at any time.
+                  </p>
                 </div>
                 
                 <button 
