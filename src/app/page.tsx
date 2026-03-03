@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Activity, Shield, Zap, Tablet, ArrowRight, Wallet } from "lucide-react";
+import { Activity, Shield, Zap, Tablet, Wallet } from "lucide-react";
 import Link from "next/link";
 
 import { useAppKit, useAppKitAccount } from '@reown/appkit/react'
@@ -14,9 +14,6 @@ export default function Home() {
   const { isConnected, address } = useAppKitAccount()
   const router = useRouter()
   
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState("")
-
   const handleConnect = async () => {
     if (isConnected) {
       router.push('/dashboard')
@@ -91,12 +88,12 @@ export default function Home() {
         <div className="hidden md:flex items-center gap-8 font-medium">
           <a href="#features" className="hover:text-primary transition-colors">Features</a>
           <a href="#security" className="hover:text-primary transition-colors">Security</a>
-          <Link 
-            href="/dashboard" 
-            className="bg-secondary text-white px-6 py-2 rounded-full font-bold hover:bg-secondary/90 transition-all"
+          <button 
+            onClick={handleConnect}
+            className="bg-secondary text-white px-6 py-2 rounded-full font-bold hover:bg-secondary/90 transition-all cursor-pointer"
           >
-            Dashboard
-          </Link>
+            Setup
+          </button>
         </div>
       </nav>
 
@@ -113,24 +110,6 @@ export default function Home() {
           <p className="text-xl text-gray-500 max-w-lg leading-relaxed">
             Secure, auditable, and hardware-bound crypto trading. Connect your ESP32 device, set your rules, and swap with a single physical click.
           </p>
-          
-          <div className="bg-gray-50 p-8 rounded-3xl border border-gray-100 shadow-sm max-w-md">
-            <h3 className="font-bold text-xl mb-4">Connect Wallet to Begin</h3>
-            <div className="space-y-4">
-              <button 
-                onClick={handleConnect}
-                disabled={loading}
-                className="w-full bg-primary text-secondary py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-lg shadow-primary/20"
-              >
-                <Wallet className="w-5 h-5" />
-                {isConnected ? "Go to Dashboard" : "Connect Wallet"}
-              </button>
-              <p className="text-center text-xs text-gray-400">
-                Supports HashPack, Blade, and other WalletConnect wallets.
-              </p>
-            </div>
-            {message && <p className="mt-4 text-center text-sm font-medium text-primary">{message}</p>}
-          </div>
         </div>
 
         <div className="relative hidden lg:block">
