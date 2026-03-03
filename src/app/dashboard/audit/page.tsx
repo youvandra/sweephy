@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Search, Download, Filter, FileText, CheckCircle2, XCircle, AlertTriangle, Shield, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Download, Filter, FileText, CheckCircle2, XCircle, AlertTriangle, Shield, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useAppKitAccount } from "@reown/appkit/react";
 
 export default function AuditPage() {
@@ -15,11 +15,19 @@ export default function AuditPage() {
   const [totalCount, setTotalCount] = useState(0);
   const PAGE_SIZE = 10;
 
+  // Filter State
+  const [showFilter, setShowFilter] = useState(false);
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterDevice, setFilterDevice] = useState("all");
+  const [filterDate, setFilterDate] = useState("");
+  const [devices, setDevices] = useState<any[]>([]);
+
   useEffect(() => {
     if (address) {
       fetchLogs();
+      fetchDevices();
     }
-  }, [address, currentPage, searchTerm]); // Refetch when page or search changes
+  }, [address, currentPage, searchTerm, filterStatus, filterDevice, filterDate]); 
 
   async function getProfileId() {
     if (!address) return null;
@@ -28,35 +36,76 @@ export default function AuditPage() {
     return data?.id;
   }
 
+  async function fetchDevices() {
+    const userId = await getProfileId();
+    if (!userId) return;
+    const { data } = await supabase.from('devices').select('id, name').eq('user_id', userId);
+    setDevices(data || []);
+  }
+
   async function fetchLogs() {
     const userId = await getProfileId();
     if (!userId) return;
+
+    // 1. Get all device IDs for the user.
+    let deviceIds: string[] = [];
+    
+    if (filterDevice !== 'all') {
+      // If filtering by specific device
+      deviceIds = [filterDevice];
+    } else {
+      // If 'all', get all user devices
+      const { data: userDevices } = await supabase.from('devices').select('id').eq('user_id', userId);
+      deviceIds = userDevices?.map(d => d.id) || [];
+    }
+    
+    if (deviceIds.length === 0) {
+      setLogs([]);
+      setTotalCount(0);
+      return;
+    }
+
+    // 2. Get all intent IDs for these devices
+    // Apply Status filter here on intents
+    let intentQuery = supabase.from('intents').select('id').in('device_id', deviceIds);
+    
+    if (filterStatus !== 'all') {
+        intentQuery = intentQuery.eq('status', filterStatus);
+    }
+
+    const { data: userIntents } = await intentQuery;
+    const intentIds = userIntents?.map(i => i.id) || [];
+
+    if (intentIds.length === 0) {
+      setLogs([]);
+      setTotalCount(0);
+      return;
+    }
 
     // Calculate range for pagination
     const from = (currentPage - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
+    // 3. Query intent_logs filtering by these intent IDs
     let query = supabase
       .from("intent_logs")
-      .select("*, intents!inner(*, devices!inner(name, user_id))", { count: 'exact' })
-      .eq("intents.devices.user_id", userId)
+      .select("*, intents(*, devices(name))", { count: 'exact' }) 
+      .in('intent_id', intentIds)
       .order("timestamp", { ascending: false })
       .range(from, to);
 
-    // Apply search filter if exists
-    // Note: Filtering on joined tables in Supabase JS client can be tricky.
-    // For simple search, we might filter on client side if dataset is small, 
-    // or use specific text search columns if available.
-    // Here we'll rely on the base query first. 
-    // If you need deep search on joined fields (like device name), 
-    // it's better to create a database view or function.
-    // For now, let's keep it simple or user-side filter for displayed items if complex.
-    
-    // However, since we are paginating on server side, client-side filter only works for current page.
-    // To search properly with pagination, we need server-side search.
-    // Let's assume search is mainly for Transaction Hash which is in intent_logs.
     if (searchTerm) {
       query = query.ilike('tx_hash', `%${searchTerm}%`);
+    }
+
+    if (filterDate) {
+      // Filter by date (ignoring time)
+      const startDate = new Date(filterDate);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(filterDate);
+      endDate.setHours(23, 59, 59, 999);
+      
+      query = query.gte('timestamp', startDate.toISOString()).lte('timestamp', endDate.toISOString());
     }
 
     const { data, count, error } = await query;
@@ -68,6 +117,86 @@ export default function AuditPage() {
 
     setLogs(data || []);
     if (count !== null) setTotalCount(count);
+  }
+
+  async function handleExportCSV() {
+    const userId = await getProfileId();
+    if (!userId) return;
+
+    // Fetch ALL logs without pagination but WITH filters
+    
+    // 1. Get device IDs (respecting filter)
+    let deviceIds: string[] = [];
+    if (filterDevice !== 'all') {
+      deviceIds = [filterDevice];
+    } else {
+      const { data: userDevices } = await supabase.from('devices').select('id').eq('user_id', userId);
+      deviceIds = userDevices?.map(d => d.id) || [];
+    }
+    
+    if (deviceIds.length === 0) return;
+
+    // 2. Get intent IDs (respecting status filter)
+    let intentQuery = supabase.from('intents').select('id').in('device_id', deviceIds);
+    if (filterStatus !== 'all') {
+        intentQuery = intentQuery.eq('status', filterStatus);
+    }
+
+    const { data: userIntents } = await intentQuery;
+    const intentIds = userIntents?.map(i => i.id) || [];
+    if (intentIds.length === 0) return;
+
+    // 3. Get Logs (respecting search & date)
+    let query = supabase
+      .from("intent_logs")
+      .select("*, intents(*, devices(name))")
+      .in('intent_id', intentIds)
+      .order("timestamp", { ascending: false });
+
+    if (searchTerm) {
+      query = query.ilike('tx_hash', `%${searchTerm}%`);
+    }
+
+    if (filterDate) {
+      const startDate = new Date(filterDate);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(filterDate);
+      endDate.setHours(23, 59, 59, 999);
+      query = query.gte('timestamp', startDate.toISOString()).lte('timestamp', endDate.toISOString());
+    }
+
+    const { data } = await query;
+
+    if (!data || data.length === 0) {
+      alert("No logs found to export with current filters.");
+      return;
+    }
+
+    // Convert to CSV
+    const csvContent = [
+      ["Timestamp", "Device", "Action", "Pair", "Amount", "Signed By", "Tx Hash", "Status"],
+      ...data.map(log => [
+        new Date(log.timestamp).toISOString(),
+        log.intents?.devices?.name || "Unknown",
+        log.intents?.action,
+        log.intents?.pair,
+        log.intents?.amount,
+        log.signed_by,
+        log.tx_hash,
+        log.intents?.status
+      ])
+    ].map(e => e.join(",")).join("\n");
+
+    // Download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `audit_logs_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -82,31 +211,89 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-secondary">Audit Trail</h1>
-          <p className="text-gray-500 text-sm">Immutable history of all device activities and signatures</p>
+          <h1 className="text-3xl font-bold text-secondary">Audit Logs</h1>
+          <p className="text-alt-1 mt-1">Real-time immutable record of all device interactions and swaps.</p>
         </div>
         <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 border rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium text-secondary">
-            <Filter className="w-4 h-4" /> Filter
+          <button 
+            onClick={() => setShowFilter(!showFilter)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border font-bold transition-all ${
+              showFilter ? "bg-secondary text-white border-secondary" : "bg-white text-secondary border-gray-200 hover:border-secondary"
+            }`}
+          >
+            <Filter className="w-4 h-4" />
+            Filter
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-secondary text-white rounded-xl hover:bg-secondary/90 transition-colors text-sm font-bold shadow-sm shadow-secondary/10">
-            <Download className="w-4 h-4" /> Export CSV
+          <button 
+            onClick={handleExportCSV}
+            className="flex items-center gap-2 bg-secondary text-white px-5 py-2.5 rounded-xl font-bold hover:bg-secondary/90 transition-all shadow-lg shadow-secondary/20"
+          >
+            <Download className="w-4 h-4" />
+            Export CSV
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="p-4 border-b bg-gray-50/50 flex items-center gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+      {showFilter && (
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm mb-6 animate-in fade-in slide-in-from-top-2">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-secondary">Filter Logs</h3>
+            <button onClick={() => setShowFilter(false)} className="text-gray-400 hover:text-red-500 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-500 uppercase">Status</label>
+              <select 
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-secondary/10 focus:border-secondary"
+              >
+                <option value="all">All Status</option>
+                <option value="success">Success</option>
+                <option value="failed">Failed</option>
+                <option value="pending">Pending</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-500 uppercase">Device</label>
+              <select 
+                value={filterDevice}
+                onChange={(e) => setFilterDevice(e.target.value)}
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-secondary/10 focus:border-secondary"
+              >
+                <option value="all">All Devices</option>
+                {devices.map((d: any) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-500 uppercase">Date</label>
+              <input 
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-secondary/10 focus:border-secondary"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-[24px] border border-gray-100 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-gray-100 flex items-center gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input 
               type="text" 
-              placeholder="Search by Transaction Hash or Device..." 
-              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+              placeholder="Search by Transaction Hash..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium focus:bg-white focus:border-secondary/20 focus:ring-4 focus:ring-secondary/5 outline-none transition-all"
             />
           </div>
         </div>
