@@ -2,19 +2,24 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Search, Download, Filter, FileText, CheckCircle2, XCircle, AlertTriangle, Shield } from "lucide-react";
+import { Search, Download, Filter, FileText, CheckCircle2, XCircle, AlertTriangle, Shield, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAppKitAccount } from "@reown/appkit/react";
 
 export default function AuditPage() {
   const { address } = useAppKitAccount();
   const [logs, setLogs] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const PAGE_SIZE = 10;
 
   useEffect(() => {
     if (address) {
       fetchLogs();
     }
-  }, [address]);
+  }, [address, currentPage, searchTerm]); // Refetch when page or search changes
 
   async function getProfileId() {
     if (!address) return null;
@@ -27,14 +32,45 @@ export default function AuditPage() {
     const userId = await getProfileId();
     if (!userId) return;
 
-    const { data } = await supabase
+    // Calculate range for pagination
+    const from = (currentPage - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    let query = supabase
       .from("intent_logs")
-      .select("*, intents!inner(*, devices!inner(name, user_id))")
+      .select("*, intents!inner(*, devices!inner(name, user_id))", { count: 'exact' })
       .eq("intents.devices.user_id", userId)
-      .order("timestamp", { ascending: false });
+      .order("timestamp", { ascending: false })
+      .range(from, to);
+
+    // Apply search filter if exists
+    // Note: Filtering on joined tables in Supabase JS client can be tricky.
+    // For simple search, we might filter on client side if dataset is small, 
+    // or use specific text search columns if available.
+    // Here we'll rely on the base query first. 
+    // If you need deep search on joined fields (like device name), 
+    // it's better to create a database view or function.
+    // For now, let's keep it simple or user-side filter for displayed items if complex.
     
+    // However, since we are paginating on server side, client-side filter only works for current page.
+    // To search properly with pagination, we need server-side search.
+    // Let's assume search is mainly for Transaction Hash which is in intent_logs.
+    if (searchTerm) {
+      query = query.ilike('tx_hash', `%${searchTerm}%`);
+    }
+
+    const { data, count, error } = await query;
+    
+    if (error) {
+      console.error("Error fetching logs:", error);
+      return;
+    }
+
     setLogs(data || []);
+    if (count !== null) setTotalCount(count);
   }
+
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const StatusIcon = ({ status }: { status: string }) => {
     switch (status) {
@@ -134,6 +170,58 @@ export default function AuditPage() {
               <Shield className="w-8 h-8 text-gray-300" />
             </div>
             <p className="text-gray-500 text-sm">No audit logs found. Perform a swap to see activity here.</p>
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {logs.length > 0 && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50/30">
+            <div className="text-xs text-gray-500 font-medium">
+              Showing <span className="font-bold text-secondary">{(currentPage - 1) * PAGE_SIZE + 1}</span> to <span className="font-bold text-secondary">{Math.min(currentPage * PAGE_SIZE, totalCount)}</span> of <span className="font-bold text-secondary">{totalCount}</span> results
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4 text-gray-600" />
+              </button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  // Logic to show pages around current page could be complex
+                  // For simplicity, showing first 5 or sliding window
+                  let p = i + 1;
+                  if (totalPages > 5 && currentPage > 3) {
+                    p = currentPage - 3 + i;
+                    if (p > totalPages) p = totalPages - (4 - i);
+                  }
+                  
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p)}
+                      className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
+                        currentPage === p 
+                          ? "bg-secondary text-white shadow-md shadow-secondary/20" 
+                          : "text-gray-500 hover:bg-gray-100"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-4 h-4 text-gray-600" />
+              </button>
+            </div>
           </div>
         )}
       </div>
