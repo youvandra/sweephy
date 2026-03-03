@@ -94,9 +94,9 @@ export default function Home() {
           <Image 
             src="/Logos/Logo_mark-green_text-black.png" 
             alt="Sweephy" 
-            width={140} 
-            height={40} 
-            className="h-10 w-auto"
+            width={196} 
+            height={56} 
+            className="h-14 w-auto"
             priority
           />
         </div>
@@ -194,9 +194,9 @@ export default function Home() {
             <Image 
               src="/Logos/Logo_mark-green_text-black.png" 
               alt="Sweephy" 
-              width={140} 
-              height={40} 
-              className="h-8 w-auto"
+              width={196} 
+              height={56} 
+              className="h-14 w-auto"
             />
           </div>
           <p className="text-alt-2 text-sm">© 2026 Sweephy Protocol. Production Ready.</p>

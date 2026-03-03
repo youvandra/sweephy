@@ -121,9 +121,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Image 
             src="/Logos/Logo_all-white.png" 
             alt="Sweephy" 
-            width={140} 
-            height={40} 
-            className="h-8 w-auto"
+            width={196} 
+            height={56} 
+            className="h-14 w-auto"
             priority
           />
         </div>
