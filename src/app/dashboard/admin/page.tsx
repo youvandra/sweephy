@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Tablet, ShieldAlert, Key, Hash, AlertTriangle, X, Copy, Check, Info, ShieldCheck } from "lucide-react";
+import { Plus, Trash2, Tablet, ShieldAlert, Key, Hash, AlertTriangle, X, Copy, Check, Info, ShieldCheck, CheckCircle2, Search, Filter } from "lucide-react";
 import { useAppKitAccount } from "@reown/appkit/react";
 
 export default function AdminPage() {
@@ -14,6 +14,8 @@ export default function AdminPage() {
   const [deviceToDelete, setDeviceToDelete] = useState<any>(null);
   const [newDevice, setNewDevice] = useState<{ id: string; secret: string; pairingCode: string } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"all" | "claimed" | "unclaimed">("all");
 
   useEffect(() => {
     if (address) checkAdmin();
@@ -130,8 +132,44 @@ export default function AdminPage() {
     setDeviceToDelete(null);
   }
 
-  if (checking) return <div className="p-20 text-center font-bold">Verifying Permissions...</div>;
-  if (!isAdmin) return <div className="p-20 text-center font-bold text-red-500">Access Denied. Admins Only.</div>;
+  if (checking) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="font-bold text-secondary">Verifying Administrative Access...</p>
+      </div>
+    </div>
+  );
+  
+  if (!isAdmin) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="text-center space-y-4 max-w-md">
+        <div className="w-20 h-20 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center mx-auto">
+          <ShieldAlert className="w-10 h-10" />
+        </div>
+        <h2 className="text-2xl font-bold text-secondary">Access Denied</h2>
+        <p className="text-gray-500">You do not have permission to view this page. This area is restricted to platform administrators only.</p>
+        <button onClick={() => window.history.back()} className="px-6 py-3 bg-secondary text-white rounded-xl font-bold hover:bg-secondary/90 transition-all">
+          Go Back
+        </button>
+      </div>
+    </div>
+  );
+
+  const filteredDevices = devices.filter(d => {
+    const matchesSearch = 
+      d.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.profiles?.wallet_address?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.pairing_codes?.[0]?.code?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    if (!matchesSearch) return false;
+
+    if (filterStatus === "all") return true;
+    if (filterStatus === "claimed") return !!d.user_id;
+    if (filterStatus === "unclaimed") return !d.user_id;
+    
+    return true;
+  });
 
   return (
     <div className="space-y-8 relative">
@@ -252,111 +290,154 @@ export default function AdminPage() {
         </div>
       )}
 
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-2xl font-bold text-secondary flex items-center gap-2">
-            <ShieldAlert className="text-primary" /> Admin Device Provisioning
-          </h1>
-          <p className="text-gray-500 text-sm">Create factory-fresh devices for users to claim</p>
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-bold uppercase tracking-wider mb-2">
+            <ShieldCheck className="w-3 h-3" />
+            Admin Portal
+          </div>
+          <h1 className="text-3xl font-bold text-secondary">Device Provisioning</h1>
+          <p className="text-gray-500 mt-1">Create and manage factory devices for distribution.</p>
         </div>
         <button 
           onClick={handleCreateDevice}
           disabled={loading}
-          className="bg-secondary text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2"
+          className="bg-secondary text-white px-6 py-3.5 rounded-2xl font-bold flex items-center gap-3 hover:bg-secondary/90 hover:shadow-lg hover:shadow-secondary/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
         >
-          <Plus className="w-4 h-4 text-primary" /> {loading ? "Provisioning..." : "Provision New Device"}
+          {loading ? (
+            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+            <Plus className="w-5 h-5 text-primary" />
+          )}
+          {loading ? "Provisioning..." : "Provision New Device"}
         </button>
       </div>
 
-      {/* KMS Info Card */}
-      <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-6 rounded-2xl text-white shadow-xl">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-lg font-bold flex items-center gap-2">
-              <ShieldCheck className="text-green-400" /> Platform KMS Wallet
-            </h2>
-            <p className="text-slate-400 text-sm mt-1">
-              This is the Hedera account that signs transactions for users. 
-              Users must grant allowance to this account.
-            </p>
-          </div>
-          <div className="bg-green-500/20 text-green-400 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest">
-            Active
-          </div>
+      {/* KMS Info (Minimal) */}
+      <div className="flex items-center gap-4 px-2 py-1 opacity-50 hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1.5 text-xs text-gray-400">
+          <ShieldCheck className="w-3 h-3" />
+          <span className="font-medium">KMS System Active</span>
         </div>
-        
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white/5 p-4 rounded-xl border border-white/10">
-            <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Hedera Account ID</p>
-            <div className="flex items-center gap-2">
-              <p className="font-mono text-xl font-bold tracking-tight">{operatorId}</p>
-              <button onClick={() => copyToClipboard(operatorId, 'opId')} className="hover:text-green-400 transition-colors">
-                {copiedField === 'opId' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-          
-          <div className="bg-white/5 p-4 rounded-xl border border-white/10">
-            <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">AWS KMS Key ID</p>
-            <div className="flex items-center gap-2">
-              <p className="font-mono text-xs text-slate-300 break-all">{kmsKeyId}</p>
-              <button onClick={() => copyToClipboard(kmsKeyId, 'kmsId')} className="hover:text-green-400 transition-colors shrink-0">
-                {copiedField === 'kmsId' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
+        <div className="w-1 h-1 rounded-full bg-gray-300" />
+        <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-mono">
+          <span>OP: {operatorId}</span>
+          <span className="text-gray-300">|</span>
+          <span>KEY: {kmsKeyId.slice(0, 8)}...</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {devices.map((device) => (
-          <div key={device.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-            <div className="flex justify-between">
-              <div className="p-3 bg-gray-50 rounded-xl text-secondary">
-                <Tablet className="w-6 h-6" />
-              </div>
-              <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded ${
-                device.user_id ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-              }`}>
-                {device.user_id ? "Claimed" : "Unclaimed"}
-              </span>
-            </div>
-            
-            <div>
-              <p className="text-xs text-gray-400 font-bold uppercase">Device ID</p>
-              <p className="text-sm font-mono truncate">{device.id}</p>
-              {device.profiles?.wallet_address && (
-                <div className="mt-2 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                  <p className="text-[10px] text-blue-500 font-bold uppercase">Owned By</p>
-                  <p className="text-[10px] text-blue-700 font-mono truncate">{device.profiles.wallet_address}</p>
-                </div>
-              )}
-            </div>
-
-            <div className={`p-4 rounded-xl border ${
-              device.is_paired ? "bg-green-50 border-green-100" : "bg-primary/5 border-primary/10"
-            }`}>
-              <div className="flex items-center gap-2 mb-1">
-                <Key className={`w-3 h-3 ${device.is_paired ? "text-green-500" : "text-primary"}`} />
-                <p className="text-xs font-bold text-secondary uppercase">
-                  {device.is_paired ? "Status" : "Active Pairing Code"}
-                </p>
-              </div>
-              <p className={`text-xl font-black tracking-widest ${
-                device.is_paired ? "text-green-600" : "text-secondary"
-              }`}>
-                {device.is_paired ? "PAIRED" : (device.pairing_codes?.[0]?.code || "NONE")}
-              </p>
-            </div>
-
-            <button 
-              onClick={() => setDeviceToDelete(device)}
-              className="w-full py-2 text-xs font-bold text-red-500 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center gap-2"
+      {/* Search & Filter Bar */}
+      <div className="flex flex-col md:flex-row gap-4 bg-white p-2 rounded-2xl border border-gray-100 shadow-sm">
+        <div className="relative flex-1">
+          <Search className="w-5 h-5 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" />
+          <input 
+            type="text" 
+            placeholder="Search devices by ID, wallet, or code..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-bold text-secondary focus:bg-white focus:border-primary/50 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
+          />
+        </div>
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar px-2 md:px-0">
+          <Filter className="w-4 h-4 text-gray-400 shrink-0" />
+          <div className="h-6 w-px bg-gray-200 mx-2 shrink-0" />
+          {(['all', 'claimed', 'unclaimed'] as const).map((status) => (
+            <button
+              key={status}
+              onClick={() => setFilterStatus(status)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
+                filterStatus === status 
+                  ? "bg-secondary text-white shadow-lg shadow-secondary/20" 
+                  : "bg-gray-50 text-gray-500 hover:bg-gray-100"
+              }`}
             >
-              <Trash2 className="w-3 h-3" /> Remove Provision
+              {status}
             </button>
-          </div>
-        ))}
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {filteredDevices.map((device) => {
+          const isClaimed = !!device.user_id;
+          const isPaired = device.is_paired;
+          
+          return (
+            <div key={device.id} className="group bg-white p-4 rounded-2xl border border-gray-100 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300">
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-xl transition-colors ${
+                    isClaimed ? "bg-primary/10 text-primary" : "bg-gray-50 text-gray-400"
+                  }`}>
+                    <Tablet className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <p className="font-bold text-secondary text-sm font-mono" title={device.id}>
+                        {device.id.slice(0, 8)}...
+                      </p>
+                      <button 
+                        onClick={() => copyToClipboard(device.id, `dev-${device.id}`)}
+                        className="text-gray-300 hover:text-primary transition-colors"
+                      >
+                        {copiedField === `dev-${device.id}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      </button>
+                    </div>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                      isClaimed ? "text-green-600" : "text-amber-600"
+                    }`}>
+                      {isClaimed ? "Claimed" : "Inventory"}
+                    </span>
+                  </div>
+                </div>
+                
+                <button 
+                  onClick={() => setDeviceToDelete(device)}
+                  className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                  title="Revoke Provision"
+                >
+                  <Trash2 className="w-4 h-4" /> 
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {/* Pairing Code / Status - Simplified */}
+                <div className={`px-3 py-2 rounded-xl border flex items-center justify-between ${
+                  isPaired ? "bg-green-50/50 border-green-100" : "bg-primary/5 border-primary/10"
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {isPaired ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                    ) : (
+                      <Key className="w-3.5 h-3.5 text-primary" />
+                    )}
+                    <span className="text-xs font-bold text-secondary uppercase tracking-wider">
+                      {isPaired ? "Paired" : "Code:"}
+                    </span>
+                  </div>
+                  {!isPaired && (
+                    <span className="font-mono font-black text-secondary tracking-widest text-sm">
+                      {device.pairing_codes?.[0]?.code || "---"}
+                    </span>
+                  )}
+                </div>
+
+                {/* Owner Info - Only if claimed */}
+                {device.profiles?.wallet_address && (
+                  <div className="flex items-center gap-2 px-2">
+                    <div className="w-4 h-4 rounded-full bg-gray-100 flex items-center justify-center text-[8px] font-bold text-gray-500 shrink-0">
+                      {device.profiles.wallet_address[2].toUpperCase()}
+                    </div>
+                    <p className="text-[10px] font-mono text-gray-400 truncate">
+                      {device.profiles.wallet_address}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
