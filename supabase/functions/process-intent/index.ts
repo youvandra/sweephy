@@ -19,13 +19,13 @@ const AWS_SECRET_ACCESS_KEY = getEnv("AWS_SECRET_ACCESS_KEY");
 const AWS_REGION = getEnv("AWS_REGION");
 const AWS_KMS_KEY_ID = getEnv("AWS_KMS_KEY_ID");
 const MIRROR_NODE_API = "https://mainnet-public.mirrornode.hedera.com";
-const KMS_ACCOUNT_ID = AccountId.fromString("0.0.10304901");
+const KMS_ACCOUNT_ID = AccountId.fromString(getEnv("KMS_ACCOUNT_ID") || "0.0.10304901");
 const SECP256K1_N = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
 
 // SAUCERSWAP CONSTANTS (Mainnet)
-const SAUCERSWAP_ROUTER_ID = ContractId.fromString("0.0.3045981");
-const WHBAR_TOKEN_ID = TokenId.fromString("0.0.1456986");
-const USDC_TOKEN_ID = TokenId.fromString("0.0.456858");
+const SAUCERSWAP_ROUTER_ID = ContractId.fromString(getEnv("SAUCERSWAP_ROUTER_ID") || "0.0.3045981");
+const WHBAR_TOKEN_ID = TokenId.fromString(getEnv("WHBAR_TOKEN_ID") || "0.0.1456986");
+const USDC_TOKEN_ID = TokenId.fromString(getEnv("USDC_TOKEN_ID") || "0.0.456858");
 
 
 

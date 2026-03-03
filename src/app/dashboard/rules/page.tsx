@@ -213,11 +213,16 @@ export default function RulesPage() {
 
       // Configure Hedera Client
       const client = Client.forMainnet();
-      const nodeIp = process.env.NEXT_PUBLIC_HEDERA_NODE_IP || "35.237.200.180:50211";
-      const nodeAccount = process.env.NEXT_PUBLIC_HEDERA_NODE_ACCOUNT_ID || "0.0.3";
-      const networkConfig: { [key: string]: string | AccountId } = {};
-      networkConfig[nodeIp] = AccountId.fromString(nodeAccount);
-      client.setNetwork(networkConfig);
+      
+      // Use custom node if configured in env
+      const nodeIp = process.env.NEXT_PUBLIC_HEDERA_NODE_IP;
+      const nodeAccount = process.env.NEXT_PUBLIC_HEDERA_NODE_ACCOUNT_ID;
+      
+      if (nodeIp && nodeAccount) {
+        const networkConfig: { [key: string]: string | AccountId } = {};
+        networkConfig[nodeIp] = AccountId.fromString(nodeAccount);
+        client.setNetwork(networkConfig);
+      }
 
       const spenderId = AccountId.fromString(PLATFORM_SPENDER_ID);
       const ownerId = AccountId.fromString(address);

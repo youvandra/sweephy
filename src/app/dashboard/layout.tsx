@@ -21,12 +21,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isAdmin, setIsAdmin] = useState(false);
   const [hederaId, setHederaId] = useState<string | null>(null);
 
-  // ✅ Gunakan dua kondisi: timeout fallback + isConnected definitif
+  // ✅ Use two conditions: timeout fallback + definitive isConnected status
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    // Safety net: paksa hydrated setelah 1.5s walau isConnected masih undefined
-    // Ini handle kasus AppKit lambat resolve karena dual-network setup
+    // Safety net: force hydrated after 1.5s even if isConnected is still undefined
+    // Handles cases where AppKit resolves slowly due to dual-network setup
     const timeout = setTimeout(() => {
       setHydrated(true);
     }, 1500);
@@ -100,9 +100,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
-  // ✅ FIX: Tampilkan loading spinner selama AppKit hydrating
-  // Ini mencegah children render sebelum auth state siap,
-  // sekaligus mencegah redirect prematur
+  // ✅ Show loading spinner while AppKit is hydrating
+  // Prevents premature rendering of children before auth state is ready
+  // and avoids premature redirects
   if (!hydrated) {
     return (
       <div className="flex h-screen items-center justify-center bg-secondary-light">

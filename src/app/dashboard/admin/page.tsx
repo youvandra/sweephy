@@ -61,12 +61,9 @@ export default function AdminPage() {
     }
   }
 
-  // --- Display KMS Public Key ---
-  // In a real app, you would fetch this from an Edge Function that queries KMS.
-  // For now, we'll display the Account ID if we know it, or a placeholder.
-  // Ideally, you'd store the KMS Public Key / Account ID in a 'platform_config' table.
-  const kmsKeyId = "c3a98921-e9a0-40ed-9e20-2fcc970e75c9"; // New SECP256K1 Key
-  const operatorId = "0.0.10304901"; // Real Hedera Account ID associated with KMS
+  // Display KMS Public Key from environment variables
+  const kmsKeyId = process.env.NEXT_PUBLIC_KMS_KEY_ID || "Not Configured";
+  const operatorId = process.env.NEXT_PUBLIC_OPERATOR_ID || "Not Configured";
 
   async function fetchAllDevices() {
     // Admins should see ALL devices. 
