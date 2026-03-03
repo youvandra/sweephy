@@ -82,7 +82,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const navItems = [
     { icon: LayoutDashboard, label: "Overview", href: "/dashboard" },
     { icon: Tablet, label: "My Devices", href: "/dashboard/devices" },
-    { icon: ArrowRightLeft, label: "Swap Intents", href: "/dashboard/intents" },
     { icon: Settings, label: "Rules & Limits", href: "/dashboard/rules" },
     { icon: ShieldCheck, label: "Audit Logs", href: "/dashboard/audit" },
   ];

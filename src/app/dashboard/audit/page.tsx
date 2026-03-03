@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Search, Download, Filter, FileText, CheckCircle2, XCircle, AlertTriangle, Shield, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Search, Download, Filter, FileText, CheckCircle2, XCircle, AlertTriangle, Shield, ChevronLeft, ChevronRight, X, ExternalLink } from "lucide-react";
 import { useAppKitAccount } from "@reown/appkit/react";
 
 export default function AuditPage() {
@@ -47,14 +47,11 @@ export default function AuditPage() {
     const userId = await getProfileId();
     if (!userId) return;
 
-    // 1. Get all device IDs for the user.
+    // 1. Get device IDs (respecting filter)
     let deviceIds: string[] = [];
-    
     if (filterDevice !== 'all') {
-      // If filtering by specific device
       deviceIds = [filterDevice];
     } else {
-      // If 'all', get all user devices
       const { data: userDevices } = await supabase.from('devices').select('id').eq('user_id', userId);
       deviceIds = userDevices?.map(d => d.id) || [];
     }
@@ -65,47 +62,33 @@ export default function AuditPage() {
       return;
     }
 
-    // 2. Get all intent IDs for these devices
-    // Apply Status filter here on intents
-    let intentQuery = supabase.from('intents').select('id').in('device_id', deviceIds);
-    
-    if (filterStatus !== 'all') {
-        intentQuery = intentQuery.eq('status', filterStatus);
-    }
-
-    const { data: userIntents } = await intentQuery;
-    const intentIds = userIntents?.map(i => i.id) || [];
-
-    if (intentIds.length === 0) {
-      setLogs([]);
-      setTotalCount(0);
-      return;
-    }
-
     // Calculate range for pagination
     const from = (currentPage - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
-    // 3. Query intent_logs filtering by these intent IDs
+    // 2. Query intents directly
     let query = supabase
-      .from("intent_logs")
-      .select("*, intents(*, devices(name))", { count: 'exact' }) 
-      .in('intent_id', intentIds)
-      .order("timestamp", { ascending: false })
+      .from("intents")
+      .select("*, devices(name)", { count: 'exact' })
+      .in('device_id', deviceIds)
+      .order("created_at", { ascending: false })
       .range(from, to);
 
+    if (filterStatus !== 'all') {
+      query = query.eq('status', filterStatus);
+    }
+
     if (searchTerm) {
-      query = query.ilike('tx_hash', `%${searchTerm}%`);
+      // Search by tx_hash (now in intents) or pair/action
+      query = query.or(`tx_hash.ilike.%${searchTerm}%,pair.ilike.%${searchTerm}%`);
     }
 
     if (filterDate) {
-      // Filter by date (ignoring time)
       const startDate = new Date(filterDate);
       startDate.setHours(0, 0, 0, 0);
       const endDate = new Date(filterDate);
       endDate.setHours(23, 59, 59, 999);
-      
-      query = query.gte('timestamp', startDate.toISOString()).lte('timestamp', endDate.toISOString());
+      query = query.gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString());
     }
 
     const { data, count, error } = await query;
@@ -304,49 +287,54 @@ export default function AuditPage() {
               <tr className="bg-gray-50/50 text-[10px] uppercase font-bold text-gray-400 tracking-wider">
                 <th className="px-6 py-4">Timestamp</th>
                 <th className="px-6 py-4">Device</th>
-                <th className="px-6 py-4">Action / Pair</th>
-                <th className="px-6 py-4">Signed By</th>
-                <th className="px-6 py-4">Tx Hash</th>
+                <th className="px-6 py-4">Pair</th>
+                <th className="px-6 py-4">Amount</th>
                 <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4 text-right">Tx Hash</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {logs.map((log) => (
-                <tr key={log.id} className="hover:bg-gray-50/50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <p className="text-sm text-secondary font-medium">{new Date(log.timestamp).toLocaleDateString()}</p>
-                    <p className="text-[10px] text-gray-400">{new Date(log.timestamp).toLocaleTimeString()}</p>
-                  </td>
-                  <td className="px-6 py-4 text-sm font-bold text-secondary">
-                    {log.intents?.devices?.name || 'Unknown Device'}
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="text-sm font-bold text-secondary">{log.intents?.action?.toUpperCase()} {log.intents?.pair}</p>
-                    <p className="text-[10px] text-primary font-bold">{log.intents?.amount} HBAR</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-tighter ${
-                      log.signed_by === 'kms' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
-                    }`}>
-                      {log.signed_by}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 group/hash">
-                      <p className="text-xs text-gray-400 font-mono max-w-[120px] truncate">{log.tx_hash}</p>
-                      <button className="opacity-0 group-hover/hash:opacity-100 transition-opacity p-1 bg-gray-100 rounded">
-                        <FileText className="w-3 h-3 text-gray-500" />
-                      </button>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <StatusIcon status={log.intents?.status} />
-                      <span className="text-xs font-bold text-secondary capitalize">{log.intents?.status}</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {logs.map((log) => {
+                const timestamp = log.executed_at || log.created_at;
+                return (
+                  <tr key={log.id} className="hover:bg-gray-50/50 transition-colors group">
+                    <td className="px-6 py-4">
+                      <p className="text-sm text-secondary font-medium">{new Date(timestamp).toLocaleDateString()}</p>
+                      <p className="text-[10px] text-gray-400">{new Date(timestamp).toLocaleTimeString()}</p>
+                    </td>
+                    <td className="px-6 py-4 text-sm font-bold text-secondary">
+                      {log.devices?.name || 'Unknown Device'}
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-sm font-bold text-secondary">{log.pair}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-sm font-bold text-primary">{log.amount} HBAR</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <StatusIcon status={log.status} />
+                        <span className="text-xs font-bold text-secondary capitalize">{log.status}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 flex justify-end">
+                      {log.tx_hash ? (
+                        <a 
+                          href={`https://hashscan.io/mainnet/transaction/${log.tx_hash}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-xs font-medium w-fit transition-colors"
+                        >
+                          View Transaction
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <span className="text-gray-400 text-xs">-</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
