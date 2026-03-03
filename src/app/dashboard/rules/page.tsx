@@ -35,7 +35,7 @@ const RuleInput = ({ label, value, onChange, icon: Icon, suffix, description, pl
       <input 
         type="number" 
         value={value} 
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => onChange(e.target.value)}
         className="w-full px-4 py-3 bg-secondary-light/50 border border-transparent rounded-xl font-bold text-secondary focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all placeholder:text-alt-2"
         placeholder={placeholder}
       />
@@ -65,12 +65,20 @@ export default function RulesPage() {
   // @ts-ignore
   const { walletProvider: evmProvider } = useAppKitProvider("eip155");
 
-  const [rules, setRules] = useState({
-    swap_amount: 50,
-    max_per_swap: 100,
-    daily_limit: 1000,
-    cooldown_seconds: 60,
-    slippage_tolerance: 0.5,
+  const [rules, setRules] = useState<{
+    swap_amount: number | string;
+    max_per_swap: number | string;
+    daily_limit: number | string;
+    cooldown_seconds: number | string;
+    slippage_tolerance: number | string;
+    allowance_granted: boolean;
+    hbar_allowance_amount: number;
+  }>({
+    swap_amount: "",
+    max_per_swap: "",
+    daily_limit: "",
+    cooldown_seconds: "",
+    slippage_tolerance: "",
     allowance_granted: false,
     hbar_allowance_amount: 0,
   });
@@ -80,8 +88,9 @@ export default function RulesPage() {
   const [loading, setLoading] = useState(false);
   const [allowanceLoading, setAllowanceLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [allowanceInput, setAllowanceInput] = useState(1000);
+  const [allowanceInput, setAllowanceInput] = useState<number | string>("");
   const [isFetching, setIsFetching] = useState(true);
+  const [showAllowanceInput, setShowAllowanceInput] = useState(false);
 
   /**
    * allowanceStatus:
@@ -199,6 +208,12 @@ export default function RulesPage() {
   async function handleGrantAllowance() {
     if (!address) { alert("Please connect your wallet first."); return; }
 
+    const amount = Number(allowanceInput);
+    if (!amount || amount <= 0) {
+      alert("Please enter a valid allowance amount.");
+      return;
+    }
+
     setAllowanceLoading(true);
     try {
       let provider = hederaProvider as any;
@@ -226,7 +241,7 @@ export default function RulesPage() {
       const ownerId = AccountId.fromString(address);
 
       const allowanceTx = new AccountAllowanceApproveTransaction()
-        .approveHbarAllowance(ownerId, spenderId, Hbar.from(allowanceInput, HbarUnit.Hbar))
+        .approveHbarAllowance(ownerId, spenderId, Hbar.from(amount, HbarUnit.Hbar))
         .setTransactionId(TransactionId.generate(ownerId))
         .freezeWith(client);
 
@@ -462,28 +477,41 @@ export default function RulesPage() {
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Update Allowance</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={allowanceInput}
-                      onChange={(e) => setAllowanceInput(Number(e.target.value))}
-                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl font-bold text-white focus:bg-white/10 focus:border-primary outline-none transition-all placeholder:text-gray-600"
-                      placeholder="Amount"
-                    />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500">HBAR</span>
+                {/* Show input only if not granted OR if user clicked Update Limit */}
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                  (showAllowanceInput || !rules.allowance_granted) ? "max-h-24 opacity-100 mt-4" : "max-h-0 opacity-0 mt-0"
+                }`}>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Set Allowance Amount</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={allowanceInput}
+                        onChange={(e) => setAllowanceInput(e.target.value)}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl font-bold text-white focus:bg-white/10 focus:border-primary outline-none transition-all placeholder:text-gray-600"
+                        placeholder="Amount"
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500">HBAR</span>
+                    </div>
                   </div>
                 </div>
 
                 <button
-                  onClick={handleGrantAllowance}
+                  onClick={() => {
+                    // If allowance is granted but input is hidden, show input first
+                    if (rules.allowance_granted && !showAllowanceInput) {
+                      setShowAllowanceInput(true);
+                    } else {
+                      // Otherwise perform the grant action
+                      handleGrantAllowance();
+                    }
+                  }}
                   disabled={allowanceLoading}
                   className="w-full bg-primary text-secondary py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed mt-4 cursor-pointer"
                 >
                   {allowanceLoading ? "Processing..." : (
                     <>
-                      {rules.allowance_granted ? "Update Limit" : "Grant Allowance"}
+                      {rules.allowance_granted && !showAllowanceInput ? "Update Limit" : (rules.allowance_granted ? "Update" : "Grant Allowance")}
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
