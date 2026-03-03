@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, RotateCw, Trash2, Power, Shield, Tablet, Activity, AlertTriangle, CheckCircle2, Wifi, WifiOff, Edit2, X } from "lucide-react";
 import { useAppKitAccount } from "@reown/appkit/react";
+import { useToast } from "@/components/ui/Toast";
 
 export default function DevicesPage() {
   const { address } = useAppKitAccount();
+  const toast = useToast();
   const [devices, setDevices] = useState<any[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [pairingCodeInput, setPairingCodeInput] = useState("");
@@ -104,9 +106,9 @@ export default function DevicesPage() {
       setPairingCodeInput("");
       setIsAdding(false);
       fetchDevices();
-      alert("Device successfully paired!");
+      toast.success("Device successfully paired!");
     } catch (error: any) {
-      alert(error.message);
+      toast.error(error.message);
     } finally {
       setLoading(false);
     }
@@ -122,6 +124,9 @@ export default function DevicesPage() {
     if (!error) {
       fetchDevices();
       setDeviceToDelete(null);
+      toast.success("Device removed successfully");
+    } else {
+      toast.error("Failed to remove device");
     }
   }
 
@@ -137,13 +142,22 @@ export default function DevicesPage() {
       fetchDevices();
       setEditingDevice(null);
       setNewDeviceName("");
+      toast.success("Device renamed successfully");
+    } else {
+      toast.error("Failed to rename device");
     }
   }
 
   async function toggleDeviceStatus(device: any) {
     const newStatus = device.status === "disabled" ? "online" : "disabled";
-    await supabase.from("devices").update({ status: newStatus }).eq("id", device.id);
-    fetchDevices();
+    const { error } = await supabase.from("devices").update({ status: newStatus }).eq("id", device.id);
+    
+    if (!error) {
+      fetchDevices();
+      toast.success(`Device ${newStatus === "online" ? "enabled" : "disabled"} successfully`);
+    } else {
+      toast.error("Failed to update device status");
+    }
   }
 
   const DeviceSkeleton = () => (

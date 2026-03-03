@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { Search, Download, Filter, FileText, CheckCircle2, XCircle, AlertTriangle, Shield, ChevronLeft, ChevronRight, X, ExternalLink } from "lucide-react";
 import { useAppKitAccount } from "@reown/appkit/react";
+import { useToast } from "@/components/ui/Toast";
 
 export default function AuditPage() {
   const { address } = useAppKitAccount();
+  const toast = useToast();
   const [logs, setLogs] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   
@@ -176,7 +178,7 @@ export default function AuditPage() {
     const { data } = await query;
 
     if (!data || data.length === 0) {
-      alert("No logs found to export with current filters.");
+      toast.info("No logs found to export with current filters.");
       return;
     }
 

@@ -13,6 +13,7 @@ import {
   TransactionId
 } from "@hashgraph/sdk";
 import { useAppKitProvider } from "@reown/appkit/react";
+import { useToast } from "@/components/ui/Toast";
 
 type AllowanceStatus = "idle" | "loading" | "success" | "error";
 
@@ -59,6 +60,7 @@ export default function RulesPage() {
   const { walletProvider: hederaProvider } = useAppKitProvider("hedera");
   // @ts-ignore
   const { walletProvider: evmProvider } = useAppKitProvider("eip155");
+  const toast = useToast();
 
   // State management for trading rules and allowance status
   const [rules, setRules] = useState<{
@@ -84,7 +86,6 @@ export default function RulesPage() {
   // UI loading states
   const [loading, setLoading] = useState(false);
   const [allowanceLoading, setAllowanceLoading] = useState(false);
-  const [message, setMessage] = useState("");
   const [allowanceInput, setAllowanceInput] = useState<number | string>("");
   const [isFetching, setIsFetching] = useState(true);
   const [showAllowanceInput, setShowAllowanceInput] = useState(false);
@@ -187,11 +188,11 @@ export default function RulesPage() {
    * Supports both native Hedera wallets and EVM wallets via network switching.
    */
   async function handleGrantAllowance() {
-    if (!address) { alert("Please connect your wallet first."); return; }
+    if (!address) { toast.error("Please connect your wallet first."); return; }
 
     const amount = Number(allowanceInput);
     if (!amount || amount <= 0) {
-      alert("Please enter a valid allowance amount.");
+      toast.warning("Please enter a valid allowance amount.");
       return;
     }
 
@@ -252,7 +253,7 @@ export default function RulesPage() {
         }
       }
 
-      setMessage("Native HBAR Allowance Granted!");
+      toast.success("Native HBAR Allowance Granted!");
 
       // Update database and poll for confirmation
       const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
@@ -282,10 +283,9 @@ export default function RulesPage() {
         setTimeout(poll, 3000);
       }
     } catch (err: any) {
-      alert("Failed to grant allowance: " + err.message);
+      toast.error("Failed to grant allowance: " + err.message);
     } finally {
       setAllowanceLoading(false);
-      setTimeout(() => setMessage(""), 3000);
     }
   }
 
@@ -306,11 +306,10 @@ export default function RulesPage() {
 
     if (userId) {
       await supabase.from("rules").upsert({ user_id: userId, ...rules, updated_at: new Date().toISOString() });
-      setMessage("Settings saved successfully!");
+      toast.success("Settings saved successfully!");
     }
 
     setLoading(false);
-    setTimeout(() => setMessage(""), 3000);
   }
 
   // ─── Component Render ───────────────────────────────────────────────────────
@@ -361,13 +360,6 @@ export default function RulesPage() {
           <p className="text-alt-1 mt-1">Configure your automated trading parameters and security thresholds.</p>
         </div>
       </div>
-
-      {message && (
-        <div className="bg-primary/10 border border-primary/20 text-secondary px-6 py-4 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4">
-          <CheckCircle2 className="w-5 h-5 text-primary" />
-          <p className="font-medium">{message}</p>
-        </div>
-      )}
 
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">

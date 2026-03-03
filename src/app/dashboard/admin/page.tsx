@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Trash2, Tablet, ShieldAlert, Key, Hash, AlertTriangle, X, Copy, Check, Info, ShieldCheck, CheckCircle2, Search, Filter } from "lucide-react";
 import { useAppKitAccount } from "@reown/appkit/react";
+import { useToast } from "@/components/ui/Toast";
 
 export default function AdminPage() {
   const { address } = useAppKitAccount();
+  const toast = useToast();
   const [devices, setDevices] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -107,8 +109,9 @@ export default function AdminPage() {
 
       fetchAllDevices();
       setNewDevice({ id: device.id, secret, pairingCode: code });
+      toast.success("Device provisioned successfully");
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -125,9 +128,10 @@ export default function AdminPage() {
     const { error } = await supabase.from("devices").delete().eq("id", deviceToDelete.id);
     if (error) {
       console.error("Delete error:", error);
-      alert("Error deleting device: " + error.message);
+      toast.error("Error deleting device: " + error.message);
     } else {
       fetchAllDevices();
+      toast.success("Device removed successfully");
     }
     setDeviceToDelete(null);
   }
