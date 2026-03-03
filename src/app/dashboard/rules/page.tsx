@@ -355,13 +355,6 @@ export default function RulesPage() {
           <h1 className="text-3xl font-bold text-secondary">Rules & Limits</h1>
           <p className="text-alt-1 mt-1">Configure your automated trading parameters and security thresholds.</p>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={loading}
-          className="bg-secondary text-white px-8 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-secondary/90 hover:shadow-lg hover:shadow-secondary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-        >
-          {loading ? "Saving..." : (<><Save className="w-4 h-4" />Save Configuration</>)}
-        </button>
       </div>
 
       {message && (
@@ -383,7 +376,7 @@ export default function RulesPage() {
                 <p className="text-sm text-alt-1">Control how your device executes swaps</p>
               </div>
             </div>
-            <div className="grid sm:grid-cols-2 gap-6">
+            <div className="grid sm:grid-cols-2 gap-6 mb-8">
               <RuleInput label="Amount per Click" value={rules.swap_amount} onChange={(v: number) => setRules({ ...rules, swap_amount: v })} icon={DollarSign} suffix="HBAR" description="The exact amount of HBAR to swap when you press the physical button." placeholder="50" />
               <RuleInput label="Max per Swap" value={rules.max_per_swap} onChange={(v: number) => setRules({ ...rules, max_per_swap: v })} icon={Shield} suffix="HBAR" description="Hard limit for a single transaction to prevent accidental large swaps." placeholder="100" />
               <RuleInput label="Daily Limit" value={rules.daily_limit} onChange={(v: number) => setRules({ ...rules, daily_limit: v })} icon={Wallet} suffix="HBAR" description="Maximum total HBAR volume allowed within a 24-hour period." placeholder="1000" />
@@ -392,6 +385,14 @@ export default function RulesPage() {
                 <RuleInput label="Slippage Tolerance" value={rules.slippage_tolerance} onChange={(v: number) => setRules({ ...rules, slippage_tolerance: v })} icon={Percent} suffix="%" description="Your transaction will revert if the price changes unfavorably by more than this percentage." placeholder="0.5" />
               </div>
             </div>
+
+            <button
+              onClick={handleSave}
+              disabled={loading}
+              className="w-full bg-secondary text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-secondary/90 hover:shadow-lg hover:shadow-secondary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {loading ? "Saving..." : (<><Save className="w-4 h-4" />Save Configuration</>)}
+            </button>
           </section>
         </div>
 
