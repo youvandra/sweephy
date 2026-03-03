@@ -300,7 +300,6 @@ export default function DevicesPage() {
                             <Edit2 className="w-3 h-3" />
                           </button>
                         </div>
-                        <p className="text-xs text-gray-400 mt-1 font-mono">{device.id}</p>
                         <div className="mt-4 flex flex-col gap-2">
                           <div className="flex items-center justify-between text-xs">
                             <span className="text-gray-400">Last Seen</span>
