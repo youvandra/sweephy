@@ -218,7 +218,7 @@ export default function DevicesPage() {
                   type="text"
                   value={pairingCodeInput}
                   onChange={(e) => setPairingCodeInput(e.target.value.toUpperCase())}
-                  placeholder="Ex: A1B2C3"
+                  placeholder="A1B2C3"
                   className="w-full text-center text-3xl font-mono tracking-[0.5em] py-4 border-b-2 border-gray-200 focus:border-primary outline-none transition-all placeholder:text-gray-200 uppercase"
                   maxLength={6}
                 />
