@@ -197,9 +197,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Hedera Mainnet</p>
               </div>
             </div>
-            <div className="w-10 h-10 bg-primary/10 rounded-xl border border-primary/20 flex items-center justify-center text-primary font-black shadow-sm">
-              {address?.[0]?.toUpperCase() || 'W'}
-            </div>
           </div>
         </header>
 
