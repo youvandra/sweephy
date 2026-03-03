@@ -14,11 +14,7 @@ import {
 } from "@hashgraph/sdk";
 import { useAppKitProvider } from "@reown/appkit/react";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type AllowanceStatus = "idle" | "loading" | "success" | "error";
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
 
 const RuleInput = ({ label, value, onChange, icon: Icon, suffix, description, placeholder }: any) => (
   <div className="space-y-3 bg-white p-5 rounded-2xl border border-secondary/10 hover:border-primary/50 transition-colors group">
@@ -44,7 +40,6 @@ const RuleInput = ({ label, value, onChange, icon: Icon, suffix, description, pl
   </div>
 );
 
-/** Skeleton block untuk allowance card */
 const AllowanceCardSkeleton = () => (
   <div className="p-4 rounded-2xl border border-white/10 bg-white/5 animate-pulse space-y-3">
     <div className="flex items-center gap-3">
@@ -55,7 +50,7 @@ const AllowanceCardSkeleton = () => (
   </div>
 );
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Main Page Component ──────────────────────────────────────────────────────
 
 export default function RulesPage() {
   const { address, isConnected } = useAppKitAccount();
@@ -65,6 +60,7 @@ export default function RulesPage() {
   // @ts-ignore
   const { walletProvider: evmProvider } = useAppKitProvider("eip155");
 
+  // State management for trading rules and allowance status
   const [rules, setRules] = useState<{
     swap_amount: number | string;
     max_per_swap: number | string;
@@ -85,6 +81,7 @@ export default function RulesPage() {
 
   const PLATFORM_SPENDER_ID = process.env.NEXT_PUBLIC_PLATFORM_SPENDER_ID || "0.0.10304901";
 
+  // UI loading states
   const [loading, setLoading] = useState(false);
   const [allowanceLoading, setAllowanceLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -92,16 +89,9 @@ export default function RulesPage() {
   const [isFetching, setIsFetching] = useState(true);
   const [showAllowanceInput, setShowAllowanceInput] = useState(false);
 
-  /**
-   * allowanceStatus:
-   *   "idle"    → belum pernah fetch
-   *   "loading" → sedang fetch (tampilkan skeleton di allowance card)
-   *   "success" → fetch berhasil, data bisa dipercaya
-   *   "error"   → fetch gagal, tetap skeleton sampai retry berhasil
-   */
   const [allowanceStatus, setAllowanceStatus] = useState<AllowanceStatus>("idle");
 
-  // ─── Init ──────────────────────────────────────────────────────────────────
+  // ─── Data Initialization ────────────────────────────────────────────────────
 
   useEffect(() => {
     async function loadData() {
@@ -113,15 +103,9 @@ export default function RulesPage() {
     loadData();
   }, [address]);
 
-  // ─── Allowance fetch ───────────────────────────────────────────────────────
-
   /**
-   * Fetch allowance dari Mirror Node.
-   * - Set status "loading" dulu → skeleton tampil
-   * - Kalau berhasil → "success", simpan data
-   * - Kalau error / response tidak valid → "error", tetap skeleton
-   * - Kalau memang benar-benar 0 / spender tidak ada → "success" dengan nilai 0
-   *   (ini valid, bukan error — card tampil "Not Configured")
+   * Fetches real-time HBAR allowance from the Hedera Mirror Node.
+   * Handles EVM address resolution and maps response data to component state.
    */
   async function checkRealtimeAllowance() {
     if (!address) return;
@@ -129,7 +113,7 @@ export default function RulesPage() {
     setAllowanceStatus("loading");
 
     try {
-      // Resolve account ID dari EVM address jika perlu
+      // Attempt to resolve Hedera Account ID if an EVM address is provided
       let accountId = address;
       if (address.startsWith("0x")) {
         try {
@@ -145,29 +129,26 @@ export default function RulesPage() {
         `https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${accountId}/allowances/crypto`
       );
 
-      // Non-2xx response → error, jangan update data
       if (!res.ok) {
-        console.error("Mirror Node non-OK response:", res.status);
         setAllowanceStatus("error");
         return;
       }
 
       const data = await res.json();
 
-      // Mirror Node returned an error object → tetap skeleton
       if (data?._status?.messages) {
-        console.error("Mirror Node error:", data._status.messages);
         setAllowanceStatus("error");
         return;
       }
 
-      // Respons valid — proses allowance
+      // Process allowance data if available
       if (data?.allowances) {
         const platformAllowance = data.allowances.find(
           (a: any) => a.spender === PLATFORM_SPENDER_ID
         );
 
         if (platformAllowance) {
+          // Use 'amount' or 'amount_granted' as fallback for remaining allowance
           const rawAmount = platformAllowance.amount ?? platformAllowance.amount_granted ?? 0;
           const remainingHbar = Number(rawAmount) / 100_000_000;
           setRules(prev => ({
@@ -176,25 +157,21 @@ export default function RulesPage() {
             hbar_allowance_amount: remainingHbar,
           }));
         } else {
-          // Spender tidak ada → valid, berarti belum di-grant
           setRules(prev => ({ ...prev, allowance_granted: false, hbar_allowance_amount: 0 }));
         }
       } else {
-        // allowances array kosong / undefined → valid, nilai 0
         setRules(prev => ({ ...prev, allowance_granted: false, hbar_allowance_amount: 0 }));
       }
 
       setAllowanceStatus("success");
     } catch (error) {
-      console.error("Failed to fetch realtime allowance:", error);
       setAllowanceStatus("error");
-      // Tidak update rules.allowance_granted → data lama tetap tersimpan,
-      // tapi UI tetap menampilkan skeleton sampai fetch ulang berhasil.
     }
   }
 
-  // ─── Rules fetch ───────────────────────────────────────────────────────────
-
+  /**
+   * Retrieves user-specific trading rules from Supabase.
+   */
   async function fetchRules() {
     if (!address) return;
     const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
@@ -203,8 +180,12 @@ export default function RulesPage() {
     if (rulesData) setRules(rulesData);
   }
 
-  // ─── Grant allowance ───────────────────────────────────────────────────────
+  // ─── Transaction Handlers ───────────────────────────────────────────────────
 
+  /**
+   * Executes a Hedera transaction to approve HBAR allowance for the platform spender.
+   * Supports both native Hedera wallets and EVM wallets via network switching.
+   */
   async function handleGrantAllowance() {
     if (!address) { alert("Please connect your wallet first."); return; }
 
@@ -218,18 +199,19 @@ export default function RulesPage() {
     try {
       let provider = hederaProvider as any;
 
+      // Fallback to EVM provider with network switch attempt
       if (!provider && evmProvider) {
         try {
           await switchNetwork({ chainNamespace: "hedera", chainId: "hedera:mainnet" } as any);
           provider = evmProvider;
         } catch (switchErr) {
-          console.warn("Network switch failed:", switchErr);
           provider = evmProvider;
         }
       }
 
       if (!provider) throw new Error("Wallet provider not initialized.");
 
+      // Configure Hedera Client
       const client = Client.forMainnet();
       const nodeIp = process.env.NEXT_PUBLIC_HEDERA_NODE_IP || "35.237.200.180:50211";
       const nodeAccount = process.env.NEXT_PUBLIC_HEDERA_NODE_ACCOUNT_ID || "0.0.3";
@@ -240,6 +222,7 @@ export default function RulesPage() {
       const spenderId = AccountId.fromString(PLATFORM_SPENDER_ID);
       const ownerId = AccountId.fromString(address);
 
+      // Construct and freeze transaction
       const allowanceTx = new AccountAllowanceApproveTransaction()
         .approveHbarAllowance(ownerId, spenderId, Hbar.from(amount, HbarUnit.Hbar))
         .setTransactionId(TransactionId.generate(ownerId))
@@ -248,6 +231,7 @@ export default function RulesPage() {
       const txBase64 = Buffer.from(allowanceTx.toBytes()).toString("base64");
       const params = { signerAccountId: `hedera:mainnet:${address}`, transactionList: txBase64 };
 
+      // Execute transaction via wallet provider
       let result;
       try {
         result = await provider.request({ method: "hedera_signAndExecuteTransaction", params: [params] });
@@ -265,6 +249,7 @@ export default function RulesPage() {
 
       setMessage("Native HBAR Allowance Granted!");
 
+      // Update database and poll for confirmation
       const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
       if (profile) {
         await supabase.from("rules").upsert({
@@ -273,12 +258,8 @@ export default function RulesPage() {
           last_allowance_update: new Date().toISOString(),
         });
 
-        // Polling Mirror Node sampai berhasil (max 5x, interval 3 detik)
-        // Pakai recursive async agar tidak kena stale closure
         const pollAllowance = async (attempt = 1) => {
           await checkRealtimeAllowance();
-          // checkRealtimeAllowance set state sendiri — cek langsung dari return value
-          // caranya: baca Mirror Node lagi via flag local
         };
         let attempt = 0;
         const poll = async (): Promise<void> => {
@@ -296,7 +277,6 @@ export default function RulesPage() {
         setTimeout(poll, 3000);
       }
     } catch (err: any) {
-      console.error(err);
       alert("Failed to grant allowance: " + err.message);
     } finally {
       setAllowanceLoading(false);
@@ -304,8 +284,9 @@ export default function RulesPage() {
     }
   }
 
-  // ─── Save ──────────────────────────────────────────────────────────────────
-
+  /**
+   * Persists updated trading rules to Supabase.
+   */
   async function handleSave() {
     if (!address) return;
     setLoading(true);
@@ -327,7 +308,7 @@ export default function RulesPage() {
     setTimeout(() => setMessage(""), 3000);
   }
 
-  // ─── Skeleton Page ────────────────────────────────────────────────────────
+  // ─── Component Render ───────────────────────────────────────────────────────
 
   const RulesSkeleton = () => (
     <div className="max-w-5xl mx-auto space-y-10 pb-20 animate-pulse">
@@ -365,14 +346,10 @@ export default function RulesPage() {
 
   if (isFetching) return <RulesSkeleton />;
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-
-  /** Apakah allowance card harus tampil sebagai skeleton? */
   const isAllowancePending = allowanceStatus === "idle" || allowanceStatus === "loading" || allowanceStatus === "error";
 
   return (
     <div className="max-w-5xl mx-auto space-y-10 pb-20">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-secondary">Rules & Limits</h1>
@@ -395,7 +372,6 @@ export default function RulesPage() {
       )}
 
       <div className="grid lg:grid-cols-3 gap-8">
-        {/* Trading Parameters */}
         <div className="lg:col-span-2 space-y-8">
           <section className="bg-white p-8 rounded-[32px] border border-secondary/5 shadow-sm">
             <div className="flex items-center gap-3 mb-8">
@@ -419,7 +395,6 @@ export default function RulesPage() {
           </section>
         </div>
 
-        {/* Allowance Section */}
         <div className="space-y-8">
           <section className="bg-secondary text-white p-8 rounded-[32px] relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
@@ -440,11 +415,6 @@ export default function RulesPage() {
               </p>
 
               <div className="space-y-4">
-                {/* 
-                  Status card:
-                  - Skeleton  → saat idle / loading / error (belum ada data yang bisa dipercaya)
-                  - Real data → hanya saat "success"
-                */}
                 {isAllowancePending ? (
                   <AllowanceCardSkeleton />
                 ) : (
@@ -477,7 +447,6 @@ export default function RulesPage() {
                   </div>
                 )}
 
-                {/* Show input only if not granted OR if user clicked Update Limit */}
                 <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
                   (showAllowanceInput || !rules.allowance_granted) ? "max-h-24 opacity-100 mt-4" : "max-h-0 opacity-0 mt-0"
                 }`}>
@@ -498,11 +467,9 @@ export default function RulesPage() {
 
                 <button
                   onClick={() => {
-                    // If allowance is granted but input is hidden, show input first
                     if (rules.allowance_granted && !showAllowanceInput) {
                       setShowAllowanceInput(true);
                     } else {
-                      // Otherwise perform the grant action
                       handleGrantAllowance();
                     }
                   }}
