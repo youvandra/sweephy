@@ -141,8 +141,6 @@ export default function DevicesPage() {
   }
 
   async function toggleDeviceStatus(device: any) {
-    // Assuming status can be 'online' or 'disabled' (offline is usually auto-detected)
-    // If we want to manually disable/enable
     const newStatus = device.status === "disabled" ? "online" : "disabled";
     await supabase.from("devices").update({ status: newStatus }).eq("id", device.id);
     fetchDevices();
