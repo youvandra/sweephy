@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, RotateCw, Trash2, Power, Shield, Tablet, Activity, AlertTriangle, CheckCircle2, Wifi, WifiOff, Edit2, X } from "lucide-react";
-import { useAppKitAccount } from "@reown/appkit/react";
+import { Plus, Trash2, Power, Tablet, Wifi, WifiOff, Edit2, X } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { useProfile } from "@/hooks/useProfile";
+import { fetchDevices, toggleDeviceStatus, deleteDevice, renameDevice, claimDevice } from "@/lib/api/devices";
 
 export default function DevicesPage() {
-  const { address } = useAppKitAccount();
+  const { userId, loading: profileLoading } = useProfile();
   const toast = useToast();
   const [devices, setDevices] = useState<any[]>([]);
   const [isAdding, setIsAdding] = useState(false);
@@ -19,93 +20,38 @@ export default function DevicesPage() {
   const [newDeviceName, setNewDeviceName] = useState("");
 
   useEffect(() => {
-    if (address) {
-      fetchDevices();
+    if (userId) {
+      loadDevices();
+      const subscription = supabase
+        .channel('devices-update')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, () => loadDevices())
+        .subscribe();
       
-      const interval = setInterval(fetchDevices, 10000); 
-      return () => clearInterval(interval);
-    } else {
+      const interval = setInterval(loadDevices, 10000); 
+      return () => {
+        supabase.removeChannel(subscription);
+        clearInterval(interval);
+      };
+    } else if (!profileLoading && !userId) {
       setFetching(false);
     }
-  }, [address]);
+  }, [userId, profileLoading]);
 
-  async function getOrCreateProfile() {
-    if (!address) return null;
-    let { data: profile } = await supabase.from("profiles").select("id").or(`wallet_address.ilike.${address},wallet_address.eq.${address}`).single();
-    if (profile) return profile.id;
-    const { data: newProfile } = await supabase.from("profiles").insert({
-      id: crypto.randomUUID(),
-      wallet_address: address, 
-    }).select().single();
-    return newProfile?.id;
-  }
-
-  async function fetchDevices() {
-    if (!address) return;
-    const userId = await getOrCreateProfile();
-    if (!userId) {
-      setFetching(false);
-      return;
-    }
-
-    const { data } = await supabase
-      .from("devices")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-    setDevices(data || []);
+  async function loadDevices() {
+    if (!userId) return;
+    const data = await fetchDevices(userId);
+    setDevices(data);
     setFetching(false);
   }
 
   async function handleClaimDevice() {
-    if (!address || !pairingCodeInput) return;
+    if (!userId || !pairingCodeInput) return;
     setLoading(true);
     try {
-      const userId = await getOrCreateProfile();
-      
-      const { data: codeData, error: codeError } = await supabase
-        .from("pairing_codes")
-        .select("*, devices(*)")
-        .eq("code", pairingCodeInput.toUpperCase())
-        .eq("used", false)
-        .single();
-
-      if (codeError || !codeData) throw new Error("Pairing code invalid or already used.");
-      if (new Date(codeData.expires_at) < new Date()) throw new Error("This pairing code has expired.");
-
-      const device = codeData.devices;
-
-      if (device.is_paired || device.user_id) {
-        throw new Error("This device is already paired to another account.");
-      }
-
-      const lastSeen = new Date(device.last_seen);
-      const now = new Date();
-      const diffSeconds = (now.getTime() - lastSeen.getTime()) / 1000;
-
-      if (!device.last_seen || diffSeconds > 30) {
-        throw new Error("Device not detected. Please turn on your Sweephy device and wait for the pairing code to appear.");
-      }
-
-      const { error: claimError } = await supabase
-        .from("devices")
-        .update({ 
-          user_id: userId,
-          is_paired: true,
-          status: "online"
-        })
-        .eq("id", codeData.device_id);
-
-      if (claimError) throw claimError;
-
-      await supabase
-        .from("pairing_codes")
-        .update({ used: true })
-        .eq("id", codeData.id);
-
+      await claimDevice(userId, pairingCodeInput);
       setPairingCodeInput("");
       setIsAdding(false);
-      fetchDevices();
+      loadDevices();
       toast.success("Device successfully paired!");
     } catch (error: any) {
       toast.error(error.message);
@@ -116,13 +62,10 @@ export default function DevicesPage() {
 
   async function handleDeleteDevice() {
     if (!deviceToDelete) return;
-    const { error } = await supabase
-      .from("devices")
-      .update({ user_id: null, is_paired: false, status: "offline" })
-      .eq("id", deviceToDelete.id);
+    const { error } = await deleteDevice(deviceToDelete.id);
 
     if (!error) {
-      fetchDevices();
+      loadDevices();
       setDeviceToDelete(null);
       toast.success("Device removed successfully");
     } else {
@@ -132,14 +75,10 @@ export default function DevicesPage() {
 
   async function handleRenameDevice() {
     if (!editingDevice || !newDeviceName.trim()) return;
-    
-    const { error } = await supabase
-      .from("devices")
-      .update({ name: newDeviceName.trim() })
-      .eq("id", editingDevice.id);
+    const { error } = await renameDevice(editingDevice.id, newDeviceName);
 
     if (!error) {
-      fetchDevices();
+      loadDevices();
       setEditingDevice(null);
       setNewDeviceName("");
       toast.success("Device renamed successfully");
@@ -148,14 +87,11 @@ export default function DevicesPage() {
     }
   }
 
-  async function toggleDeviceStatus(device: any) {
-    // Toggle is_disabled
+  async function handleToggleStatus(device: any) {
     const newDisabledStatus = !device.is_disabled;
-    
-    const { error } = await supabase.from("devices").update({ is_disabled: newDisabledStatus }).eq("id", device.id);
+    const { error } = await toggleDeviceStatus(device.id, newDisabledStatus);
     
     if (!error) {
-      // Optimistically update local state to reflect change immediately without waiting for fetchDevices
       setDevices(prevDevices => prevDevices.map(d => 
         d.id === device.id ? { ...d, is_disabled: newDisabledStatus } : d
       ));
@@ -272,6 +208,30 @@ export default function DevicesPage() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
+      {deviceToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-2xl max-w-sm w-full animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-bold text-secondary mb-2">Remove Device?</h3>
+            <p className="text-gray-500 text-sm mb-6">Are you sure you want to remove this device? This action cannot be undone.</p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setDeviceToDelete(null)}
+                className="flex-1 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleDeleteDevice}
+                className="flex-1 bg-red-500 text-white py-3 rounded-xl font-bold hover:bg-red-600 transition-all"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {fetching ? <DeviceSkeleton /> : (
         <>
           {devices.length === 0 ? (
@@ -333,7 +293,7 @@ export default function DevicesPage() {
 
                       <div className="pt-4 border-t border-gray-50 flex gap-2">
                         <button 
-                          onClick={() => toggleDeviceStatus(device)}
+                          onClick={() => handleToggleStatus(device)}
                           className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2 ${
                             isDisabled 
                               ? "bg-primary text-secondary hover:bg-primary/90" 

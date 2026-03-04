@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase";
 import { useAppKitAccount, useAppKitNetwork } from "@reown/appkit/react";
 import { Shield, Save, AlertCircle, Clock, Percent, DollarSign, Wallet, CheckCircle2, ArrowRight, Info } from "lucide-react";
 import { 
@@ -14,6 +13,9 @@ import {
 } from "@hashgraph/sdk";
 import { useAppKitProvider } from "@reown/appkit/react";
 import { useToast } from "@/components/ui/Toast";
+import { useProfile } from "@/hooks/useProfile";
+import { fetchRules, saveRules, checkRealtimeAllowance } from "@/lib/api/rules";
+import { supabase } from "@/lib/supabase";
 
 type AllowanceStatus = "idle" | "loading" | "success" | "error";
 
@@ -54,7 +56,8 @@ const AllowanceCardSkeleton = () => (
 // ─── Main Page Component ──────────────────────────────────────────────────────
 
 export default function RulesPage() {
-  const { address, isConnected } = useAppKitAccount();
+  const { address } = useAppKitAccount();
+  const { userId, loading: profileLoading } = useProfile();
   const { switchNetwork } = useAppKitNetwork();
   // @ts-ignore
   const { walletProvider: hederaProvider } = useAppKitProvider("hedera");
@@ -103,99 +106,52 @@ export default function RulesPage() {
 
   useEffect(() => {
     async function loadData() {
-      if (!address) { setIsFetching(false); return; }
+      if (!userId || !address) { 
+        if (!profileLoading) setIsFetching(false); 
+        return; 
+      }
       setIsFetching(true);
-      await Promise.all([fetchRules(), checkRealtimeAllowance()]);
+      
+      const [rulesData, allowanceResult] = await Promise.all([
+        fetchRules(userId),
+        checkRealtimeAllowance(address, PLATFORM_SPENDER_ID)
+      ]);
+
+      if (rulesData) {
+        const loadedRules = {
+          swap_amount: rulesData.swap_amount ?? "",
+          max_per_swap: rulesData.max_per_swap ?? "",
+          daily_limit: rulesData.daily_limit ?? "",
+          cooldown_seconds: rulesData.cooldown_seconds ?? "",
+          slippage_tolerance: rulesData.slippage_tolerance ?? "",
+          allowance_granted: rulesData.allowance_granted || false,
+          hbar_allowance_amount: rulesData.hbar_allowance_amount || 0,
+        };
+        
+        // Merge allowance result if success
+        if (allowanceResult.status === "success") {
+            loadedRules.allowance_granted = allowanceResult.allowance_granted || false;
+            loadedRules.hbar_allowance_amount = allowanceResult.hbar_allowance_amount || 0;
+            setAllowanceStatus("success");
+        } else {
+            setAllowanceStatus("error");
+        }
+
+        setRules(loadedRules);
+        setInitialRules({
+          swap_amount: loadedRules.swap_amount,
+          max_per_swap: loadedRules.max_per_swap,
+          daily_limit: loadedRules.daily_limit,
+          cooldown_seconds: loadedRules.cooldown_seconds,
+          slippage_tolerance: loadedRules.slippage_tolerance,
+        });
+      }
+      
       setIsFetching(false);
     }
     loadData();
-  }, [address]);
+  }, [userId, address, profileLoading]);
 
-  /**
-   * Fetches real-time HBAR allowance from the Hedera Mirror Node.
-   * Handles EVM address resolution and maps response data to component state.
-   */
-  async function checkRealtimeAllowance() {
-    if (!address) return;
-
-    setAllowanceStatus("loading");
-
-    try {
-      // Attempt to resolve Hedera Account ID if an EVM address is provided
-      let accountId = address;
-      if (address.startsWith("0x")) {
-        try {
-          const res = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${address}`);
-          const data = await res.json();
-          if (data?.account) accountId = data.account;
-        } catch {
-          try { accountId = AccountId.fromEvmAddress(0, 0, address).toString(); } catch {}
-        }
-      }
-
-      const res = await fetch(
-        `https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${accountId}/allowances/crypto`
-      );
-
-      if (!res.ok) {
-        setAllowanceStatus("error");
-        return;
-      }
-
-      const data = await res.json();
-
-      if (data?._status?.messages) {
-        setAllowanceStatus("error");
-        return;
-      }
-
-      // Process allowance data if available
-      if (data?.allowances) {
-        const platformAllowance = data.allowances.find(
-          (a: any) => a.spender === PLATFORM_SPENDER_ID
-        );
-
-        if (platformAllowance) {
-          // Use 'amount' or 'amount_granted' as fallback for remaining allowance
-          const rawAmount = platformAllowance.amount ?? platformAllowance.amount_granted ?? 0;
-          const remainingHbar = Number(rawAmount) / 100_000_000;
-          setRules(prev => ({
-            ...prev,
-            allowance_granted: remainingHbar > 0,
-            hbar_allowance_amount: remainingHbar,
-          }));
-        } else {
-          setRules(prev => ({ ...prev, allowance_granted: false, hbar_allowance_amount: 0 }));
-        }
-      } else {
-        setRules(prev => ({ ...prev, allowance_granted: false, hbar_allowance_amount: 0 }));
-      }
-
-      setAllowanceStatus("success");
-    } catch (error) {
-      setAllowanceStatus("error");
-    }
-  }
-
-  /**
-   * Retrieves user-specific trading rules from Supabase.
-   */
-  async function fetchRules() {
-    if (!address) return;
-    const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
-    if (!profile?.id) return;
-    const { data: rulesData } = await supabase.from("rules").select("*").eq("user_id", profile.id).single();
-    if (rulesData) {
-      setRules(rulesData);
-      setInitialRules({
-        swap_amount: rulesData.swap_amount,
-        max_per_swap: rulesData.max_per_swap,
-        daily_limit: rulesData.daily_limit,
-        cooldown_seconds: rulesData.cooldown_seconds,
-        slippage_tolerance: rulesData.slippage_tolerance,
-      });
-    }
-  }
 
   // ─── Transaction Handlers ───────────────────────────────────────────────────
 
@@ -272,31 +228,27 @@ export default function RulesPage() {
       toast.success("Native HBAR Allowance Granted!");
 
       // Update database and poll for confirmation
-      const { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
-      if (profile) {
+      if (userId) {
         await supabase.from("rules").upsert({
-          user_id: profile.id,
+          user_id: userId,
           allowance_granted: true,
           last_allowance_update: new Date().toISOString(),
-        });
+        }, { onConflict: 'user_id' });
 
         const pollAllowance = async (attempt = 1) => {
-          await checkRealtimeAllowance();
-        };
-        let attempt = 0;
-        const poll = async (): Promise<void> => {
-          attempt++;
-          const res = await fetch(
-            `https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${address}/allowances/crypto`
-          ).then(r => r.json()).catch(() => null);
-          if (res?.allowances) {
-            await checkRealtimeAllowance();
+          const res = await checkRealtimeAllowance(address, PLATFORM_SPENDER_ID);
+          if (res.status === "success" && res.allowance_granted) {
+             setRules(prev => ({
+                 ...prev,
+                 allowance_granted: true,
+                 hbar_allowance_amount: res.hbar_allowance_amount || 0
+             }));
+             setAllowanceStatus("success");
           } else if (attempt < 5) {
-            await new Promise(r => setTimeout(r, 3000));
-            await poll();
+             setTimeout(() => pollAllowance(attempt + 1), 3000);
           }
         };
-        setTimeout(poll, 3000);
+        setTimeout(() => pollAllowance(1), 3000);
       }
     } catch (err: any) {
       toast.error("Failed to grant allowance: " + err.message);
@@ -309,43 +261,22 @@ export default function RulesPage() {
    * Persists updated trading rules to Supabase.
    */
   async function handleSave() {
-    if (!address) return;
+    if (!userId) return;
     setLoading(true);
 
-    let { data: profile } = await supabase.from("profiles").select("id").ilike("wallet_address", address).limit(1).maybeSingle();
-    let userId = profile?.id;
-
-    if (!userId) {
-      const { data: newProfile } = await supabase.from("profiles").insert({ wallet_address: address.toLowerCase() }).select().single();
-      userId = newProfile?.id;
-    }
-
-    if (userId) {
-      // Create a clean object with only the fields we want to update
-      const updates = {
-        user_id: userId,
+    const { error } = await saveRules(userId, rules);
+    
+    if (error) {
+      toast.error("Failed to save settings: " + error.message);
+    } else {
+      setInitialRules({
         swap_amount: rules.swap_amount,
         max_per_swap: rules.max_per_swap,
         daily_limit: rules.daily_limit,
         cooldown_seconds: rules.cooldown_seconds,
         slippage_tolerance: rules.slippage_tolerance,
-        updated_at: new Date().toISOString()
-      };
-
-      const { error } = await supabase.from("rules").upsert(updates, { onConflict: 'user_id' });
-      
-      if (error) {
-        toast.error("Failed to save settings: " + error.message);
-      } else {
-        setInitialRules({
-          swap_amount: rules.swap_amount,
-          max_per_swap: rules.max_per_swap,
-          daily_limit: rules.daily_limit,
-          cooldown_seconds: rules.cooldown_seconds,
-          slippage_tolerance: rules.slippage_tolerance,
-        });
-        toast.success("Settings saved successfully!");
-      }
+      });
+      toast.success("Settings saved successfully!");
     }
 
     setLoading(false);
