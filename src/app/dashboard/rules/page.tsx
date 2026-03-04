@@ -120,6 +120,8 @@ export default function RulesPage() {
   const [showAllowanceInput, setShowAllowanceInput] = useState(false);
 
   const [allowanceStatus, setAllowanceStatus] = useState<AllowanceStatus>("idle");
+  const [revokeLoading, setRevokeLoading] = useState(false);
+  const [showRevokeModal, setShowRevokeModal] = useState(false);
 
   // ─── Data Initialization ────────────────────────────────────────────────────
 
@@ -273,6 +275,89 @@ export default function RulesPage() {
       toast.error("Failed to grant allowance: " + err.message);
     } finally {
       setAllowanceLoading(false);
+    }
+  }
+
+  /**
+   * Revokes the HBAR allowance by setting it to 0.
+   */
+  async function handleRevokeAllowance() {
+    if (!address) { toast.error("Please connect your wallet first."); return; }
+    
+    setRevokeLoading(true);
+    try {
+      let provider = hederaProvider as any;
+
+      if (!provider && evmProvider) {
+        try {
+          await switchNetwork({ chainNamespace: "hedera", chainId: "hedera:mainnet" } as any);
+          provider = evmProvider;
+        } catch {
+          provider = evmProvider;
+        }
+      }
+
+      if (!provider) throw new Error("Wallet provider not initialized.");
+
+      const client = Client.forMainnet();
+      const nodeIp = process.env.NEXT_PUBLIC_HEDERA_NODE_IP;
+      const nodeAccount = process.env.NEXT_PUBLIC_HEDERA_NODE_ACCOUNT_ID;
+      
+      if (nodeIp && nodeAccount) {
+        const networkConfig: { [key: string]: string | AccountId } = {};
+        networkConfig[nodeIp] = AccountId.fromString(nodeAccount);
+        client.setNetwork(networkConfig);
+      }
+
+      const spenderId = AccountId.fromString(PLATFORM_SPENDER_ID);
+      const ownerId = AccountId.fromString(address);
+
+      // Set allowance to 0 to revoke
+      const allowanceTx = new AccountAllowanceApproveTransaction()
+        .approveHbarAllowance(ownerId, spenderId, Hbar.from(0, HbarUnit.Hbar))
+        .setTransactionId(TransactionId.generate(ownerId))
+        .freezeWith(client);
+
+      const txBase64 = Buffer.from(allowanceTx.toBytes()).toString("base64");
+      const params = { signerAccountId: `hedera:mainnet:${address}`, transactionList: txBase64 };
+
+      let result;
+      try {
+        result = await provider.request({ method: "hedera_signAndExecuteTransaction", params: [params] });
+      } catch {
+        try {
+          result = await provider.request({ method: "hedera_signAndExecuteTransaction", params });
+        } catch {
+          try {
+            result = await provider.request({ method: "hedera_signTransaction", params: [params] });
+          } catch (e3: any) {
+            throw new Error("Wallet rejected the transaction. " + e3.message);
+          }
+        }
+      }
+
+      toast.success("Allowance Revoked Successfully!");
+
+      if (userId) {
+        await supabase.from("rules").upsert({
+          user_id: userId,
+          allowance_granted: false,
+          last_allowance_update: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+
+        setRules(prev => ({
+          ...prev,
+          allowance_granted: false,
+          hbar_allowance_amount: 0
+        }));
+        setAllowanceStatus("idle");
+        setShowAllowanceInput(false);
+        setShowRevokeModal(false);
+      }
+    } catch (err: any) {
+      toast.error("Failed to revoke allowance: " + err.message);
+    } finally {
+      setRevokeLoading(false);
     }
   }
 
@@ -449,6 +534,16 @@ export default function RulesPage() {
                     </>
                   )}
                 </button>
+
+                {rules.allowance_granted && (
+                  <button
+                    onClick={() => setShowRevokeModal(true)}
+                    disabled={revokeLoading || allowanceLoading}
+                    className="w-full bg-red-500/10 text-red-400 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-500/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer border border-red-500/20"
+                  >
+                    Revoke
+                  </button>
+                )}
               </div>
             </div>
           </section>
@@ -541,6 +636,42 @@ export default function RulesPage() {
           </section>
         </div>
       </div>
+
+      {/* Revoke Confirmation Modal */}
+      {showRevokeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-2xl max-w-sm w-full animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto text-red-500 mb-6">
+              <AlertCircle className="w-8 h-8" />
+            </div>
+            <div className="text-center mb-8">
+              <h3 className="text-xl font-bold text-secondary mb-2">Revoke Allowance?</h3>
+              <p className="text-gray-500 text-sm">
+                This will disable automated swaps. You will need to grant allowance again to resume trading.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowRevokeModal(false)}
+                className="flex-1 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleRevokeAllowance}
+                disabled={revokeLoading}
+                className="flex-1 bg-red-500 text-white py-3 rounded-xl font-bold hover:bg-red-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {revokeLoading ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  "Revoke"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
