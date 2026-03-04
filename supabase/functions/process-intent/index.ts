@@ -35,6 +35,15 @@ const NODE_ACCOUNT_IDS = [
   new AccountId(6),
 ];
 
+// Reuse AWS KMS Client across requests (warm start optimization)
+const kmsClient = new KMSClient({
+  region: AWS_REGION,
+  credentials: {
+    accessKeyId: AWS_ACCESS_KEY_ID,
+    secretAccessKey: AWS_SECRET_ACCESS_KEY,
+  },
+});
+
 let cachedPublicKey: PublicKey | null = null;
 
 function derToRaw(der: Uint8Array): { r: Uint8Array; s: Uint8Array } {
@@ -70,16 +79,8 @@ async function awsSign(messageHashBytes: Uint8Array, keyId: string): Promise<Uin
   const digestHex = ethers.keccak256(messageHashBytes).replace("0x", "");
   const digest = new Uint8Array(digestHex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
 
-  // Step 2: Use AWS SDK SignCommand (handles AWS4 auth)
-  const kms = new KMSClient({
-    region: AWS_REGION,
-    credentials: {
-      accessKeyId: AWS_ACCESS_KEY_ID,
-      secretAccessKey: AWS_SECRET_ACCESS_KEY,
-    },
-  });
-
-  const response = await kms.send(new SignCommand({
+  // Step 2: Use global AWS SDK Client
+  const response = await kmsClient.send(new SignCommand({
     KeyId: keyId,
     Message: digest,
     MessageType: "DIGEST",
@@ -100,11 +101,8 @@ async function awsSign(messageHashBytes: Uint8Array, keyId: string): Promise<Uin
 
 async function getKmsPublicKey(): Promise<PublicKey> {
   if (cachedPublicKey) return cachedPublicKey;
-  const kms = new KMSClient({
-    region: AWS_REGION,
-    credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY },
-  });
-  const { PublicKey: pubKeyBytes } = await kms.send(new GetPublicKeyCommand({ KeyId: AWS_KMS_KEY_ID }));
+
+  const { PublicKey: pubKeyBytes } = await kmsClient.send(new GetPublicKeyCommand({ KeyId: AWS_KMS_KEY_ID }));
   if (!pubKeyBytes) throw new Error("No public key from KMS");
 
   const derBytes = new Uint8Array(pubKeyBytes);
@@ -189,25 +187,45 @@ async function checkTokenAssociation(accountId: string, tokenId: string): Promis
   }
 }
 
-// Estimate swap output using SaucerSwap Router contract
+// Estimate swap output using SaucerSwap Router contract via Mirror Node REST API
+// This avoids the fee associated with ContractCallQuery on consensus nodes.
 async function getEstimatedAmountOut(client: Client, amountHbar: number): Promise<bigint> {
   try {
     const amountTinybars = BigInt(Math.floor(amountHbar * 1e8));
     const path = [WHBAR_TOKEN_ID.toSolidityAddress(), USDC_TOKEN_ID.toSolidityAddress()];
 
-    const query = new ContractCallQuery()
-      .setContractId(SAUCERSWAP_ROUTER_ID)
-      .setGas(100000)
-      .setFunction("getAmountsOut", new ContractFunctionParameters()
-        .addUint256(amountTinybars.toString())
-        .addAddressArray(path)
-      );
+    // Encode function data manually using ethers
+    const iface = new ethers.Interface([
+      "function getAmountsOut(uint256 amountIn, address[] path) external view returns (uint256[] amounts)"
+    ]);
+    const encodedData = iface.encodeFunctionData("getAmountsOut", [amountTinybars.toString(), path]);
 
-    const result = await query.execute(client);
-    const values = result.getResult(["uint[]"]);
-    const amounts: bigint[] = values[0];
+    // Call Mirror Node REST API (Free)
+    const response = await fetch(`${MIRROR_NODE_API}/api/v1/contracts/call`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        block: "latest",
+        data: encodedData,
+        to: SAUCERSWAP_ROUTER_ID.toSolidityAddress(),
+        estimate: false // We just want the result, not gas estimate
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Mirror node contract call failed: ${response.status}`);
+    }
+
+    const result = await response.json();
+    
+    // Result is in 'result' field as hex string
+    const decoded = iface.decodeFunctionResult("getAmountsOut", result.result);
+    const amounts = decoded[0]; // amounts array
+    
+    // amounts[0] = HBAR input, amounts[1] = USDC output
     return BigInt(amounts[amounts.length - 1].toString());
   } catch (e) {
+    // console.error("Estimation failed:", e);
     return BigInt(0);
   }
 }
@@ -366,10 +384,23 @@ Deno.serve(async (req) => {
 
             await supabase.from("intents").update({ amount: amountHbar }).eq("id", state.intentId);
 
-            // 2. Verify allowance on-chain
-            send("STATUS:Checking Allowance...");
-            const remainingTinybars = await verifyAllowance(userAccountIdStr, KMS_ACCOUNT_ID.toString());
+            // 2. Parallel Pre-Checks (Allowance, Associations, KMS Key)
+            // Running these in parallel significantly reduces cold-start latency
+            send("STATUS:Verifying Network State...");
+            
+            const [
+              remainingTinybars,
+              isUsdcAssociated,
+              isKmsUsdcAssociated,
+              publicKey // Ensure KMS key is cached/ready
+            ] = await Promise.all([
+              verifyAllowance(userAccountIdStr, KMS_ACCOUNT_ID.toString()),
+              checkTokenAssociation(userAccountIdStr, USDC_TOKEN_ID.toString()),
+              checkTokenAssociation(KMS_ACCOUNT_ID.toString(), USDC_TOKEN_ID.toString()),
+              getKmsPublicKey()
+            ]);
 
+            // Validate checks
             if (remainingTinybars === 0) {
               await updateIntentStatus("failed", "failed", "No allowance on-chain");
               throw new Error("ALLOWANCE ERR");
@@ -379,38 +410,27 @@ Deno.serve(async (req) => {
               throw new Error("ALLOWANCE LOW");
             }
 
-            // 3. Setup client + KMS
-            const client = Client.forMainnet();
-            client.setMaxAttempts(5);
-            client.setRequestTimeout(45000);
-
-            const publicKey = await getKmsPublicKey();
-            client.setOperatorWith(KMS_ACCOUNT_ID, publicKey, (msg) => awsSign(msg, AWS_KMS_KEY_ID));
-
-            const userAccountId = AccountId.fromString(userAccountIdStr);
-            let transferSucceeded = false;
-            let swapCompleted = false;
-
-            // 3b. Pre-check: Ensure user associated with USDC
-            send("STATUS:Checking USDC Association...");
-            const isUsdcAssociated = await checkTokenAssociation(
-              userAccountIdStr,
-              USDC_TOKEN_ID.toString()
-            );
             if (!isUsdcAssociated) {
               await updateIntentStatus("failed", "failed", "User account not associated with USDC");
               throw new Error("USDC_NOT_ASSOCIATED");
             }
 
-            // 3c. Pre-check: Ensure KMS operator associated with USDC
-            const isKmsUsdcAssociated = await checkTokenAssociation(
-              KMS_ACCOUNT_ID.toString(),
-              USDC_TOKEN_ID.toString()
-            );
             if (!isKmsUsdcAssociated) {
               await updateIntentStatus("failed", "failed", "KMS operator account not associated with USDC");
               throw new Error("KMS_USDC_NOT_ASSOCIATED");
             }
+
+            // 3. Setup client + KMS
+            const client = Client.forMainnet();
+            client.setMaxAttempts(5);
+            client.setRequestTimeout(45000);
+
+            // Set operator with the key we already fetched
+            client.setOperatorWith(KMS_ACCOUNT_ID, publicKey, (msg) => awsSign(msg, AWS_KMS_KEY_ID));
+
+            const userAccountId = AccountId.fromString(userAccountIdStr);
+            let transferSucceeded = false;
+            let swapCompleted = false;
 
             // 4. Build & execute transfer
             send("STATUS:Transferring HBAR...");
@@ -419,7 +439,8 @@ Deno.serve(async (req) => {
               .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(amountHbar))
               .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
               .setMaxTransactionFee(new Hbar(2))
-              .setNodeAccountIds(NODE_ACCOUNT_IDS)
+              // REMOVED setNodeAccountIds to let SDK automatically select best nodes
+              // This can often reduce fees and improve reliability
               .freezeWith(client);
 
             const signedTx = await transferTx.signWithOperator(client);
@@ -443,7 +464,7 @@ Deno.serve(async (req) => {
                       .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(-amountHbar))
                       .addHbarTransfer(userAccountId, new Hbar(amountHbar))
                       .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
-                      .setNodeAccountIds(NODE_ACCOUNT_IDS)
+                      // REMOVED setNodeAccountIds to let SDK automatically select best nodes
                       .freezeWith(client);
                     const signedRefund = await refundTx.signWithOperator(client);
                     await (await signedRefund.execute(client)).getReceipt(client);
@@ -555,7 +576,7 @@ Deno.serve(async (req) => {
                     .addUint256(deadline)
                   )
                   .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
-                  .setNodeAccountIds(NODE_ACCOUNT_IDS)
+                  // REMOVED setNodeAccountIds to let SDK automatically select best nodes
                   .freezeWith(client);
 
                 swapTxId = swapTx.transactionId?.toString() || "";
@@ -664,7 +685,7 @@ Deno.serve(async (req) => {
                     .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(-amountHbar))
                     .addHbarTransfer(userAccountId, new Hbar(amountHbar))
                     .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
-                    .setNodeAccountIds(NODE_ACCOUNT_IDS)
+                    // REMOVED setNodeAccountIds to let SDK automatically select best nodes
                     .freezeWith(client);
 
                   const signedRefund = await refundTx.signWithOperator(client);

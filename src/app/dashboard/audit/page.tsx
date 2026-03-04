@@ -350,7 +350,7 @@ export default function AuditPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {logs.map((log) => {
-                const timestamp = log.executed_at || log.created_at;
+                const timestamp = log.created_at;
                 return (
                   <tr key={log.id} className="hover:bg-gray-50/50 transition-colors group">
                     <td className="px-6 py-4">
