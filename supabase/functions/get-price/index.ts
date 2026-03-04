@@ -6,13 +6,14 @@ serve(async (req) => {
   }
 
   try {
-    // Fetch HBAR Price from CoinGecko
+    // Fetch HBAR/USDC Price from Binance
     let price = "0.00000";
     try {
-      const priceRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=hedera-hashgraph&vs_currencies=usd&precision=5");
+      const priceRes = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=HBARUSDC");
       if (priceRes.ok) {
           const priceData = await priceRes.json();
-          const rawPrice = priceData["hedera-hashgraph"].usd;
+          // priceData format: {"symbol":"HBARUSDC","price":"0.10243000"}
+          const rawPrice = priceData.price;
           price = Number(rawPrice).toFixed(5);
       }
     } catch (err) {
