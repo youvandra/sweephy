@@ -21,6 +21,7 @@ export const metadata: Metadata = {
 
 import { Web3ModalProvider } from "@/lib/web3-provider";
 import { ToastProvider } from "@/components/ui/Toast";
+import { Analytics } from "@vercel/analytics/next";
 
 export default function RootLayout({
   children,
@@ -35,6 +36,7 @@ export default function RootLayout({
         <Web3ModalProvider>
           <ToastProvider>
             {children}
+            <Analytics />
           </ToastProvider>
         </Web3ModalProvider>
       </body>
