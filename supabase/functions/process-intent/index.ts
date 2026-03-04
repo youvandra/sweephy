@@ -35,7 +35,6 @@ const NODE_ACCOUNT_IDS = [
   new AccountId(6),
 ];
 
-// Reuse AWS KMS Client across requests (warm start optimization)
 const kmsClient = new KMSClient({
   region: AWS_REGION,
   credentials: {
@@ -73,13 +72,10 @@ function derToRaw(der: Uint8Array): { r: Uint8Array; s: Uint8Array } {
   return { r: to32Bytes(r), s: to32Bytes(s) };
 }
 
-// AWS KMS Signing with Low-S Normalization per HIP-222
 async function awsSign(messageHashBytes: Uint8Array, keyId: string): Promise<Uint8Array> {
-  // Step 1: Keccak-256 of raw transaction bytes
   const digestHex = ethers.keccak256(messageHashBytes).replace("0x", "");
   const digest = new Uint8Array(digestHex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
 
-  // Step 2: Use global AWS SDK Client
   const response = await kmsClient.send(new SignCommand({
     KeyId: keyId,
     Message: digest,
@@ -89,7 +85,6 @@ async function awsSign(messageHashBytes: Uint8Array, keyId: string): Promise<Uin
 
   if (!response.Signature) throw new Error("KMS Sign returned no signature");
 
-  // Step 3: Decode DER -> raw r+s (with low-S normalization)
   const der = new Uint8Array(response.Signature);
   const { r, s } = derToRaw(der);
 
@@ -187,20 +182,16 @@ async function checkTokenAssociation(accountId: string, tokenId: string): Promis
   }
 }
 
-// Estimate swap output using SaucerSwap Router contract via Mirror Node REST API
-// This avoids the fee associated with ContractCallQuery on consensus nodes.
 async function getEstimatedAmountOut(client: Client, amountHbar: number): Promise<bigint> {
   try {
     const amountTinybars = BigInt(Math.floor(amountHbar * 1e8));
     const path = [WHBAR_TOKEN_ID.toSolidityAddress(), USDC_TOKEN_ID.toSolidityAddress()];
 
-    // Encode function data manually using ethers
     const iface = new ethers.Interface([
       "function getAmountsOut(uint256 amountIn, address[] path) external view returns (uint256[] amounts)"
     ]);
     const encodedData = iface.encodeFunctionData("getAmountsOut", [amountTinybars.toString(), path]);
 
-    // Call Mirror Node REST API (Free)
     const response = await fetch(`${MIRROR_NODE_API}/api/v1/contracts/call`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -208,7 +199,7 @@ async function getEstimatedAmountOut(client: Client, amountHbar: number): Promis
         block: "latest",
         data: encodedData,
         to: SAUCERSWAP_ROUTER_ID.toSolidityAddress(),
-        estimate: false // We just want the result, not gas estimate
+        estimate: false 
       })
     });
 
@@ -218,14 +209,11 @@ async function getEstimatedAmountOut(client: Client, amountHbar: number): Promis
 
     const result = await response.json();
     
-    // Result is in 'result' field as hex string
     const decoded = iface.decodeFunctionResult("getAmountsOut", result.result);
-    const amounts = decoded[0]; // amounts array
+    const amounts = decoded[0]; 
     
-    // amounts[0] = HBAR input, amounts[1] = USDC output
     return BigInt(amounts[amounts.length - 1].toString());
   } catch (e) {
-    // console.error("Estimation failed:", e);
     return BigInt(0);
   }
 }
@@ -264,6 +252,53 @@ Deno.serve(async (req) => {
       .update({ last_seen: new Date().toISOString(), status: "online" })
       .eq("id", device_id)
       .then(() => {});
+
+    // --- READY (Warm-up & Pre-flight Check) ---
+    if (action === "ready") {
+      try {
+        if (!device.is_paired) throw new Error("Device not paired");
+        const user = device.profiles;
+        if (!user) throw new Error("No user profile found");
+        const rules = user.rules;
+        if (!rules?.allowance_granted) throw new Error("Allowance not granted");
+
+        // 1. Resolve Account
+        let userAccountIdStr: string;
+        try {
+          userAccountIdStr = await resolveAccountId(user.wallet_address);
+        } catch (e: any) {
+          throw new Error(`Resolve failed: ${e.message}`);
+        }
+
+        // 2. Parallel Warm-up & Checks
+        const [
+          remainingTinybars,
+          isUsdcAssociated,
+          isKmsUsdcAssociated,
+          publicKey
+        ] = await Promise.all([
+          verifyAllowance(userAccountIdStr, KMS_ACCOUNT_ID.toString()),
+          checkTokenAssociation(userAccountIdStr, USDC_TOKEN_ID.toString()),
+          checkTokenAssociation(KMS_ACCOUNT_ID.toString(), USDC_TOKEN_ID.toString()),
+          getKmsPublicKey()
+        ]);
+
+        if (remainingTinybars === 0) throw new Error("No allowance");
+        if (!isUsdcAssociated) throw new Error("User USDC not associated");
+        if (!isKmsUsdcAssociated) throw new Error("KMS USDC not associated");
+        if (!publicKey) throw new Error("KMS Key init failed");
+
+        return new Response(JSON.stringify({ status: "ready", message: "System Ready" }), {
+          headers: { "Content-Type": "application/json" },
+        });
+
+      } catch (e: any) {
+        return new Response(JSON.stringify({ status: "not_ready", error: e.message }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
 
     // --- PAIR ---
     if (action === "pair") {
@@ -382,17 +417,36 @@ Deno.serve(async (req) => {
             const amountHbar = Math.max(rules.swap_amount || 1.0, 0.1);
             const amountTinybars = Math.floor(amountHbar * 1e8);
 
+            // Daily Limit Check
+            if (rules.daily_limit && rules.daily_limit > 0) {
+              const today = new Date().toISOString().split("T")[0];
+              const { data: dailyStats, error: dailyError } = await supabase
+                .from("intents")
+                .select("amount")
+                .eq("device_id", device_id)
+                .eq("status", "completed")
+                .gte("created_at", `${today}T00:00:00.000Z`)
+                .lte("created_at", `${today}T23:59:59.999Z`);
+
+              if (!dailyError && dailyStats) {
+                const totalSwappedToday = dailyStats.reduce((sum, intent) => sum + (intent.amount || 0), 0);
+                if (totalSwappedToday + amountHbar > rules.daily_limit) {
+                  await updateIntentStatus("failed", "failed", `Daily limit reached. Used: ${totalSwappedToday}, Limit: ${rules.daily_limit}`);
+                  throw new Error(`DAILY_LIMIT_EXCEEDED: Used ${totalSwappedToday.toFixed(2)}/${rules.daily_limit}`);
+                }
+              }
+            }
+
             await supabase.from("intents").update({ amount: amountHbar }).eq("id", state.intentId);
 
             // 2. Parallel Pre-Checks (Allowance, Associations, KMS Key)
-            // Running these in parallel significantly reduces cold-start latency
             send("STATUS:Verifying Network State...");
             
             const [
               remainingTinybars,
               isUsdcAssociated,
               isKmsUsdcAssociated,
-              publicKey // Ensure KMS key is cached/ready
+              publicKey 
             ] = await Promise.all([
               verifyAllowance(userAccountIdStr, KMS_ACCOUNT_ID.toString()),
               checkTokenAssociation(userAccountIdStr, USDC_TOKEN_ID.toString()),
@@ -433,14 +487,15 @@ Deno.serve(async (req) => {
             let swapCompleted = false;
 
             // 4. Build & execute transfer
+            const NETWORK_FEE_BUFFER = 0.001; 
+            const totalPullAmount = amountHbar + NETWORK_FEE_BUFFER;
+
             send("STATUS:Transferring HBAR...");
             const transferTx = new TransferTransaction()
-              .addApprovedHbarTransfer(userAccountId, new Hbar(-amountHbar))
-              .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(amountHbar))
-              .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
+              .addApprovedHbarTransfer(userAccountId, new Hbar(-totalPullAmount)) 
+              .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(totalPullAmount))       
+              .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))         
               .setMaxTransactionFee(new Hbar(2))
-              // REMOVED setNodeAccountIds to let SDK automatically select best nodes
-              // This can often reduce fees and improve reliability
               .freezeWith(client);
 
             const signedTx = await transferTx.signWithOperator(client);
@@ -456,15 +511,15 @@ Deno.serve(async (req) => {
               await updateIntentStatus("processing", txId, "Transfer OK", amountHbar);
 
               try {
+                // We only swap the original requested amount, keeping the buffer in KMS to cover the fee
                 await executeSwap(amountHbar, userAccountId, txId);
               } catch (postTransferErr: any) {
                 if (transferSucceeded && !swapCompleted) {
                   try {
                     const refundTx = new TransferTransaction()
-                      .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(-amountHbar))
-                      .addHbarTransfer(userAccountId, new Hbar(amountHbar))
+                      .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(-totalPullAmount))
+                      .addHbarTransfer(userAccountId, new Hbar(totalPullAmount))
                       .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
-                      // REMOVED setNodeAccountIds to let SDK automatically select best nodes
                       .freezeWith(client);
                     const signedRefund = await refundTx.signWithOperator(client);
                     await (await signedRefund.execute(client)).getReceipt(client);
@@ -600,8 +655,10 @@ Deno.serve(async (req) => {
 
                   const mirrorId = toMirrorNodeTransactionId(swapTxId);
                   let verified = false;
-                  for (let i = 0; i < 6; i++) {
-                    await new Promise(r => setTimeout(r, 4000));
+                  
+                  // Poll more aggressively: check every 2s for up to 12 times (24s total)
+                  // Start checking immediately
+                  for (let i = 0; i < 12; i++) {
                     try {
                       const check = await fetch(
                         `${MIRROR_NODE_API}/api/v1/transactions/${mirrorId}`,
@@ -620,6 +677,8 @@ Deno.serve(async (req) => {
                     } catch (e: any) {
                       if (e.message?.startsWith("SWAP_FAILED")) throw e;
                     }
+                    // Wait 2s before next check
+                    await new Promise(r => setTimeout(r, 2000));
                   }
                   if (!verified) throw new Error("SWAP_UNVERIFIED_TIMEOUT");
                 }
@@ -682,10 +741,9 @@ Deno.serve(async (req) => {
 
                 try {
                   const refundTx = new TransferTransaction()
-                    .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(-amountHbar))
-                    .addHbarTransfer(userAccountId, new Hbar(amountHbar))
+                    .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(-totalPullAmount))
+                    .addHbarTransfer(userAccountId, new Hbar(totalPullAmount))
                     .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
-                    // REMOVED setNodeAccountIds to let SDK automatically select best nodes
                     .freezeWith(client);
 
                   const signedRefund = await refundTx.signWithOperator(client);
