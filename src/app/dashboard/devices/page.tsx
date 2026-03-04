@@ -149,18 +149,17 @@ export default function DevicesPage() {
   }
 
   async function toggleDeviceStatus(device: any) {
-    // If current status is 'disabled', we want to enable it (set to 'offline' or 'online' depending on last seen, but 'offline' is safer as default state until it pings)
-    // If current status is NOT 'disabled' (i.e. 'online' or 'offline'), we want to disable it.
-    const newStatus = device.status === "disabled" ? "offline" : "disabled";
+    // Toggle is_disabled
+    const newDisabledStatus = !device.is_disabled;
     
-    const { error } = await supabase.from("devices").update({ status: newStatus }).eq("id", device.id);
+    const { error } = await supabase.from("devices").update({ is_disabled: newDisabledStatus }).eq("id", device.id);
     
     if (!error) {
       // Optimistically update local state to reflect change immediately without waiting for fetchDevices
       setDevices(prevDevices => prevDevices.map(d => 
-        d.id === device.id ? { ...d, status: newStatus } : d
+        d.id === device.id ? { ...d, is_disabled: newDisabledStatus } : d
       ));
-      toast.success(`Device ${newStatus === "disabled" ? "disabled" : "enabled"} successfully`);
+      toast.success(`Device ${newDisabledStatus ? "disabled" : "enabled"} successfully`);
     } else {
       toast.error("Failed to update device status");
     }
@@ -291,7 +290,7 @@ export default function DevicesPage() {
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {devices.map((device) => {
                 const isOnline = (new Date().getTime() - new Date(device.last_seen).getTime()) / 1000 < 60; // 60s threshold
-                const isDisabled = device.status === "disabled";
+                const isDisabled = device.is_disabled;
                 
                 return (
                   <div key={device.id} className={`group bg-white rounded-[32px] p-6 border border-gray-100 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 relative overflow-hidden ${isDisabled ? 'opacity-75' : ''}`}>

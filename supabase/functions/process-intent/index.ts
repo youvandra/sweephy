@@ -246,7 +246,7 @@ Deno.serve(async (req) => {
     }
 
     // Check if device is disabled - Block all actions if disabled
-    if (device.status === "disabled") {
+    if (device.is_disabled) {
       return new Response(JSON.stringify({ error: "DEVICE_DISABLED" }), { status: 403 });
     }
 
