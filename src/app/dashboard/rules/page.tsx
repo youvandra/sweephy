@@ -19,7 +19,7 @@ import { supabase } from "@/lib/supabase";
 
 type AllowanceStatus = "idle" | "loading" | "success" | "error";
 
-const RuleInput = ({ label, value, onChange, icon: Icon, suffix, description, placeholder }: any) => (
+const RuleInput = ({ label, value, onChange, icon: Icon, suffix, description, placeholder, presets }: any) => (
   <div className="space-y-3 bg-white p-5 rounded-2xl border border-secondary/10 hover:border-primary/50 transition-colors group">
     <div className="flex justify-between items-start">
       <label className="text-sm font-bold text-secondary flex items-center gap-2">
@@ -30,14 +30,33 @@ const RuleInput = ({ label, value, onChange, icon: Icon, suffix, description, pl
       </label>
       {suffix && <span className="text-xs font-bold text-alt-1 bg-secondary-light px-2 py-1 rounded-md">{suffix}</span>}
     </div>
-    <div className="relative">
-      <input 
-        type="number" 
-        value={value} 
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-4 py-3 bg-secondary-light/50 border border-transparent rounded-xl font-bold text-secondary focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all placeholder:text-alt-2"
-        placeholder={placeholder}
-      />
+    <div className="space-y-3">
+      <div className="relative">
+        <input 
+          type="number" 
+          value={value} 
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full px-4 py-3 bg-secondary-light/50 border border-transparent rounded-xl font-bold text-secondary focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all placeholder:text-alt-2"
+          placeholder={placeholder}
+        />
+      </div>
+      {presets && (
+        <div className="flex flex-wrap gap-2">
+          {presets.map((preset: number) => (
+            <button
+              key={preset}
+              onClick={() => onChange(preset)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                Number(value) === preset 
+                  ? "bg-primary text-secondary shadow-md shadow-primary/20" 
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+              }`}
+            >
+              {preset}{suffix === '%' ? '%' : suffix === 'SECONDS' ? 's' : ''}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
     {description && <p className="text-xs text-alt-1 leading-relaxed">{description}</p>}
   </div>
@@ -353,12 +372,57 @@ export default function RulesPage() {
               </div>
             </div>
             <div className="grid sm:grid-cols-2 gap-6 mb-8">
-              <RuleInput label="Amount per Click" value={rules.swap_amount} onChange={(v: number) => setRules({ ...rules, swap_amount: v })} icon={DollarSign} suffix="HBAR" description="The exact amount of HBAR to swap when you press the physical button." placeholder="50" />
-              <RuleInput label="Max per Swap" value={rules.max_per_swap} onChange={(v: number) => setRules({ ...rules, max_per_swap: v })} icon={Shield} suffix="HBAR" description="Hard limit for a single transaction to prevent accidental large swaps." placeholder="100" />
-              <RuleInput label="Daily Limit" value={rules.daily_limit} onChange={(v: number) => setRules({ ...rules, daily_limit: v })} icon={Wallet} suffix="HBAR" description="Maximum total HBAR volume allowed within a 24-hour period." placeholder="1000" />
-              <RuleInput label="Cooldown" value={rules.cooldown_seconds} onChange={(v: number) => setRules({ ...rules, cooldown_seconds: v })} icon={Clock} suffix="SECONDS" description="Minimum time interval required between two consecutive swaps." placeholder="60" />
+              <RuleInput 
+                label="Amount per Click" 
+                value={rules.swap_amount} 
+                onChange={(v: number) => setRules({ ...rules, swap_amount: v })} 
+                icon={DollarSign} 
+                suffix="HBAR" 
+                description="The exact amount of HBAR to swap when you press the physical button." 
+                placeholder="50" 
+                presets={[10, 50, 100, 250]}
+              />
+              <RuleInput 
+                label="Max per Swap" 
+                value={rules.max_per_swap} 
+                onChange={(v: number) => setRules({ ...rules, max_per_swap: v })} 
+                icon={Shield} 
+                suffix="HBAR" 
+                description="Hard limit for a single transaction to prevent accidental large swaps." 
+                placeholder="100" 
+                presets={[50, 100, 500, 1000]}
+              />
+              <RuleInput 
+                label="Daily Limit" 
+                value={rules.daily_limit} 
+                onChange={(v: number) => setRules({ ...rules, daily_limit: v })} 
+                icon={Wallet} 
+                suffix="HBAR" 
+                description="Maximum total HBAR volume allowed within a 24-hour period." 
+                placeholder="1000" 
+                presets={[500, 1000, 5000, 10000]}
+              />
+              <RuleInput 
+                label="Cooldown" 
+                value={rules.cooldown_seconds} 
+                onChange={(v: number) => setRules({ ...rules, cooldown_seconds: v })} 
+                icon={Clock} 
+                suffix="SECONDS" 
+                description="Minimum time interval required between two consecutive swaps." 
+                placeholder="60" 
+                presets={[10, 20, 60, 300]}
+              />
               <div className="sm:col-span-2">
-                <RuleInput label="Slippage Tolerance" value={rules.slippage_tolerance} onChange={(v: number) => setRules({ ...rules, slippage_tolerance: v })} icon={Percent} suffix="%" description="Your transaction will revert if the price changes unfavorably by more than this percentage." placeholder="0.5" />
+                <RuleInput 
+                  label="Slippage Tolerance" 
+                  value={rules.slippage_tolerance} 
+                  onChange={(v: number) => setRules({ ...rules, slippage_tolerance: v })} 
+                  icon={Percent} 
+                  suffix="%" 
+                  description="Your transaction will revert if the price changes unfavorably by more than this percentage." 
+                  placeholder="0.5" 
+                  presets={[0.1, 0.5, 1, 3]}
+                />
               </div>
             </div>
 
