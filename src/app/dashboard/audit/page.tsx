@@ -104,7 +104,7 @@ export default function AuditPage() {
 
     if (searchTerm) {
       // Search by Transaction Hash or Pair
-      query = query.or(`tx_hash.ilike.%${searchTerm}%,pair.ilike.%${searchTerm}%`);
+      query = query.or(`tx_id.ilike.%${searchTerm}%,pair.ilike.%${searchTerm}%`);
     }
 
     if (filterDate) {
@@ -161,7 +161,7 @@ export default function AuditPage() {
     }
 
     if (searchTerm) {
-      query = query.or(`tx_hash.ilike.%${searchTerm}%,pair.ilike.%${searchTerm}%`);
+      query = query.or(`tx_id.ilike.%${searchTerm}%,pair.ilike.%${searchTerm}%`);
     }
 
     if (filterDate) {
@@ -199,7 +199,7 @@ export default function AuditPage() {
         log.action,
         log.pair,
         log.amount,
-        log.tx_hash,
+        log.tx_id,
         log.status
       ])
     ].map(e => e.join(",")).join("\n");
@@ -373,9 +373,9 @@ export default function AuditPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 flex justify-end">
-                      {log.tx_hash ? (
+                      {log.tx_id && log.tx_id !== 'pending' && log.tx_id !== 'failed' ? (
                         <a 
-                          href={`https://hashscan.io/mainnet/transaction/${log.tx_hash}`} 
+                          href={`https://hashscan.io/mainnet/transaction/${log.tx_id}`} 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-xs font-medium w-fit transition-colors"
