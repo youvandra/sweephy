@@ -232,6 +232,7 @@ export default function DevicesPage() {
         </div>
       )}
 
+      {/* Device Grid */}
       {fetching ? <DeviceSkeleton /> : (
         <>
           {devices.length === 0 ? (
@@ -247,7 +248,7 @@ export default function DevicesPage() {
               </div>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {devices.map((device) => {
                 const isOnline = (new Date().getTime() - new Date(device.last_seen).getTime()) / 1000 < 60; // 60s threshold
                 const isDisabled = device.is_disabled;
@@ -274,7 +275,7 @@ export default function DevicesPage() {
                           <h3 className="text-lg font-bold text-secondary truncate max-w-[180px]">{device.name}</h3>
                           <button 
                             onClick={() => { setEditingDevice(device); setNewDeviceName(device.name); }}
-                            className="p-1 rounded-lg text-gray-300 hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover/title:opacity-100"
+                            className="p-1 rounded-lg text-gray-300 hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover/title:opacity-100 lg:group-hover/title:opacity-100 lg:opacity-0 opacity-100"
                           >
                             <Edit2 className="w-3 h-3" />
                           </button>
