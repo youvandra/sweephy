@@ -321,15 +321,31 @@ export default function RulesPage() {
     }
 
     if (userId) {
-      await supabase.from("rules").upsert({ user_id: userId, ...rules, updated_at: new Date().toISOString() });
-      setInitialRules({
+      // Create a clean object with only the fields we want to update
+      const updates = {
+        user_id: userId,
         swap_amount: rules.swap_amount,
         max_per_swap: rules.max_per_swap,
         daily_limit: rules.daily_limit,
         cooldown_seconds: rules.cooldown_seconds,
         slippage_tolerance: rules.slippage_tolerance,
-      });
-      toast.success("Settings saved successfully!");
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase.from("rules").upsert(updates, { onConflict: 'user_id' });
+      
+      if (error) {
+        toast.error("Failed to save settings: " + error.message);
+      } else {
+        setInitialRules({
+          swap_amount: rules.swap_amount,
+          max_per_swap: rules.max_per_swap,
+          daily_limit: rules.daily_limit,
+          cooldown_seconds: rules.cooldown_seconds,
+          slippage_tolerance: rules.slippage_tolerance,
+        });
+        toast.success("Settings saved successfully!");
+      }
     }
 
     setLoading(false);
