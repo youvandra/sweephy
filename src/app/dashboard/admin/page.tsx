@@ -89,7 +89,7 @@ export default function AdminPage() {
     try {
       const secret = Math.random().toString(36).slice(-10);
       const { data: device, error: deviceError } = await supabase.from("devices").insert({
-        name: "Factory ESP32",
+        name: "Sweephy Device",
         secret_hash: secret,
         status: "offline",
         is_paired: false

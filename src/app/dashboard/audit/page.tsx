@@ -348,13 +348,7 @@ export default function AuditPage() {
                   <p className="text-sm font-medium text-secondary mt-1 break-words">
                     {selectedLog.note || "No specific error message provided."}
                   </p>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase">Transaction ID</p>
-                  <p className="text-xs font-mono text-gray-600 mt-1 break-all">
-                    {selectedLog.tx_id}
-                  </p>
-                </div>
+                </div>∂
               </div>
 
               <button 
