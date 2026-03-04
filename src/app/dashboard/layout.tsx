@@ -115,57 +115,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  const NavContent = () => (
-    <div className="flex flex-col h-full w-full">
-      <div className="p-6 flex justify-between items-center">
-        <Image 
-          src="/Logos/Logo_all-white.webp" 
-          alt="Sweephy" 
-          width={196} 
-          height={56} 
-          className="h-10 w-auto"
-          priority
-        />
-        <button 
-          onClick={() => setIsSidebarOpen(false)}
-          className="lg:hidden p-2 text-gray-400 hover:text-white"
-        >
-          <X className="w-6 h-6" />
-        </button>
-      </div>
-      
-      <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setIsSidebarOpen(false)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                isActive ? "bg-primary text-secondary font-bold" : "hover:bg-white/10"
-              }`}
-            >
-              <Icon className="w-5 h-5 flex-shrink-0" />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div className="p-4 border-t border-white/10 mt-auto">
-        <button 
-          onClick={handleDisconnect}
-          className="flex items-center gap-3 px-4 py-3 w-full hover:bg-red-500/20 rounded-lg text-red-400 transition-colors text-left cursor-pointer"
-        >
-          <LogOut className="w-5 h-5 flex-shrink-0" />
-          Disconnect
-        </button>
-      </div>
-    </div>
-  );
-
   return (
     <div className="flex h-screen bg-secondary-light font-sans text-secondary overflow-hidden">
       {/* Mobile Sidebar Overlay */}
@@ -180,7 +129,54 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className={`fixed inset-y-0 left-0 z-30 w-64 bg-secondary text-white flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static flex-shrink-0 ${
         isSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
       }`}>
-        <NavContent />
+        <div className="flex flex-col h-full w-full">
+          <div className="p-6 flex justify-between items-center">
+            <Image 
+              src="/Logos/Logo_all-white.webp" 
+              alt="Sweephy" 
+              width={196} 
+              height={56} 
+              className="h-10 w-auto"
+              priority
+            />
+            <button 
+              onClick={() => setIsSidebarOpen(false)}
+              className="lg:hidden p-2 text-gray-400 hover:text-white"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setIsSidebarOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    isActive ? "bg-primary text-secondary font-bold" : "hover:bg-white/10"
+                  }`}
+                >
+                  <Icon className="w-5 h-5 flex-shrink-0" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="p-4 border-t border-white/10 mt-auto">
+            <button 
+              onClick={handleDisconnect}
+              className="flex items-center gap-3 px-4 py-3 w-full hover:bg-red-500/20 rounded-lg text-red-400 transition-colors text-left cursor-pointer"
+            >
+              <LogOut className="w-5 h-5 flex-shrink-0" />
+              Disconnect
+            </button>
+          </div>
+        </div>
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
