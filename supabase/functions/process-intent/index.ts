@@ -326,11 +326,14 @@ Deno.serve(async (req) => {
 
       const updateIntentStatus = async (status: string, txId: string, note: string, amount?: number) => {
         if (!state.intentId) return;
-        await supabase.from("intents").update({
+        const updates: any = {
           status,
           tx_id: txId || "failed",
-          amount: amount || 0,
-        }).eq("id", state.intentId);
+          note: note, // Save failure reason or additional info
+        };
+        if (amount !== undefined) updates.amount = amount;
+        
+        await supabase.from("intents").update(updates).eq("id", state.intentId);
       };
 
       const stream = new ReadableStream({

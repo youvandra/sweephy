@@ -25,6 +25,8 @@ export default function AuditPage() {
   const [devices, setDevices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [selectedLog, setSelectedLog] = useState<any>(null);
+
   // ─── Data Fetching ───────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -220,9 +222,9 @@ export default function AuditPage() {
 
   const StatusIcon = ({ status }: { status: string }) => {
     switch (status) {
-      case 'completed': return <CheckCircle2 className="w-4 h-4 text-primary" />;
-      case 'failed': return <XCircle className="w-4 h-4 text-red-500" />;
-      default: return <AlertTriangle className="w-4 h-4 text-amber-500" />;
+      case 'completed': return <div className="w-2 h-2 rounded-full bg-green-500" />;
+      case 'failed': return <div className="w-2 h-2 rounded-full bg-red-500" />;
+      default: return <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />;
     }
   };
 
@@ -321,6 +323,51 @@ export default function AuditPage() {
         </div>
       )}
 
+      {selectedLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-2xl max-w-md w-full relative animate-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => setSelectedLog(null)}
+              className="absolute top-6 right-6 p-2 rounded-full hover:bg-gray-100 text-gray-400 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="text-center space-y-6">
+              <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto text-red-500">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-secondary">Transaction Failed</h3>
+                <p className="text-gray-500 mt-2 text-sm">Details regarding this failed transaction.</p>
+              </div>
+              
+              <div className="bg-gray-50 p-4 rounded-xl text-left space-y-3">
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase">Error Reason</p>
+                  <p className="text-sm font-medium text-secondary mt-1 break-words">
+                    {selectedLog.note || "No specific error message provided."}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase">Transaction ID</p>
+                  <p className="text-xs font-mono text-gray-600 mt-1 break-all">
+                    {selectedLog.tx_id}
+                  </p>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setSelectedLog(null)}
+                className="w-full bg-secondary text-white py-3.5 rounded-xl font-bold hover:bg-secondary/90 transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? <TableSkeleton /> : (
       <div className="bg-white rounded-[24px] border border-gray-100 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex items-center gap-4">
@@ -345,7 +392,7 @@ export default function AuditPage() {
                 <th className="px-6 py-4">Pair</th>
                 <th className="px-6 py-4">Amount</th>
                 <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Tx Hash</th>
+                <th className="px-6 py-4 text-right">Result</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -364,7 +411,7 @@ export default function AuditPage() {
                       <p className="text-sm font-bold text-secondary">{log.pair}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm font-bold text-primary">{log.amount} HBAR</p>
+                      <p className="text-sm font-bold text-gray-500">{log.amount} HBAR</p>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -373,18 +420,24 @@ export default function AuditPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 flex justify-end">
-                      {log.tx_id && log.tx_id !== 'pending' && log.tx_id !== 'failed' ? (
+                      {log.status === "completed" && log.tx_id && log.tx_id !== 'pending' && log.tx_id !== 'failed' ? (
                         <a 
                           href={`https://hashscan.io/mainnet/transaction/${log.tx_id}`} 
                           target="_blank" 
                           rel="noopener noreferrer"
-                          className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-xs font-medium w-fit transition-colors"
+                          className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-bold w-fit transition-colors border border-gray-200"
                         >
-                          View Transaction
-                          <ExternalLink className="w-3 h-3" />
+                          Details
                         </a>
+                      ) : log.status === "failed" ? (
+                        <button
+                          onClick={() => setSelectedLog(log)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-bold w-fit transition-colors border border-gray-200"
+                        >
+                          Details
+                        </button>
                       ) : (
-                        <span className="text-gray-400 text-xs">-</span>
+                        <span className="text-gray-400 text-xs font-mono">{log.tx_id === 'pending' ? 'Processing...' : '-'}</span>
                       )}
                     </td>
                   </tr>
