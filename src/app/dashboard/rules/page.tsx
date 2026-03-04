@@ -360,82 +360,7 @@ export default function RulesPage() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
-          <section className="bg-white p-8 rounded-[32px] border border-secondary/5 shadow-sm">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="p-3 bg-primary/10 rounded-xl text-primary">
-                <Shield className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-secondary">Trading Parameters</h3>
-                <p className="text-sm text-alt-1">Control how your device executes swaps</p>
-              </div>
-            </div>
-            <div className="grid sm:grid-cols-2 gap-6 mb-8">
-              <RuleInput 
-                label="Amount per Click" 
-                value={rules.swap_amount} 
-                onChange={(v: number) => setRules({ ...rules, swap_amount: v })} 
-                icon={DollarSign} 
-                suffix="HBAR" 
-                description="The exact amount of HBAR to swap when you press the physical button." 
-                placeholder="50" 
-                presets={[10, 50, 100, 250]}
-              />
-              <RuleInput 
-                label="Max per Swap" 
-                value={rules.max_per_swap} 
-                onChange={(v: number) => setRules({ ...rules, max_per_swap: v })} 
-                icon={Shield} 
-                suffix="HBAR" 
-                description="Hard limit for a single transaction to prevent accidental large swaps." 
-                placeholder="100" 
-                presets={[50, 100, 500, 1000]}
-              />
-              <RuleInput 
-                label="Daily Limit" 
-                value={rules.daily_limit} 
-                onChange={(v: number) => setRules({ ...rules, daily_limit: v })} 
-                icon={Wallet} 
-                suffix="HBAR" 
-                description="Maximum total HBAR volume allowed within a 24-hour period." 
-                placeholder="1000" 
-                presets={[500, 1000, 5000, 10000]}
-              />
-              <RuleInput 
-                label="Cooldown" 
-                value={rules.cooldown_seconds} 
-                onChange={(v: number) => setRules({ ...rules, cooldown_seconds: v })} 
-                icon={Clock} 
-                suffix="SECONDS" 
-                description="Minimum time interval required between two consecutive swaps." 
-                placeholder="60" 
-                presets={[10, 20, 60, 300]}
-              />
-              <div className="sm:col-span-2">
-                <RuleInput 
-                  label="Slippage Tolerance" 
-                  value={rules.slippage_tolerance} 
-                  onChange={(v: number) => setRules({ ...rules, slippage_tolerance: v })} 
-                  icon={Percent} 
-                  suffix="%" 
-                  description="Your transaction will revert if the price changes unfavorably by more than this percentage." 
-                  placeholder="0.5" 
-                  presets={[0.1, 0.5, 1, 3]}
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={handleSave}
-              disabled={loading || !hasChanges}
-              className="w-full bg-secondary text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-secondary/90 hover:shadow-lg hover:shadow-secondary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {loading ? "Saving..." : (<><Save className="w-4 h-4" />Save Configuration</>)}
-            </button>
-          </section>
-        </div>
-
+        {/* Left Column - Allowance (Formerly Right) */}
         <div className="space-y-8">
           <section className="bg-secondary text-white p-8 rounded-[32px] relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
@@ -537,6 +462,83 @@ export default function RulesPage() {
               Allowances are the safest way to delegate signing rights. You can revoke or change this limit at any time directly from this dashboard or any Hedera wallet explorer.
             </p>
           </div>
+        </div>
+
+        {/* Right Column - Swap Parameters (Formerly Left) */}
+        <div className="lg:col-span-2 space-y-8">
+          <section className="bg-white p-8 rounded-[32px] border border-secondary/5 shadow-sm">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="p-3 bg-primary/10 rounded-xl text-primary">
+                <Shield className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-secondary">Swap Parameters</h3>
+                <p className="text-sm text-alt-1">Control how your device executes swaps</p>
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-6 mb-8">
+              <RuleInput 
+                label="Amount per Click" 
+                value={rules.swap_amount} 
+                onChange={(v: number) => setRules({ ...rules, swap_amount: v })} 
+                icon={DollarSign} 
+                suffix="HBAR" 
+                description="The exact amount of HBAR to swap when you press the physical button." 
+                placeholder="50" 
+                presets={[10, 50, 100, 250]}
+              />
+              <RuleInput 
+                label="Max per Swap" 
+                value={rules.max_per_swap} 
+                onChange={(v: number) => setRules({ ...rules, max_per_swap: v })} 
+                icon={Shield} 
+                suffix="HBAR" 
+                description="Hard limit for a single transaction to prevent accidental large swaps." 
+                placeholder="100" 
+                presets={[50, 100, 500, 1000]}
+              />
+              <RuleInput 
+                label="Daily Limit" 
+                value={rules.daily_limit} 
+                onChange={(v: number) => setRules({ ...rules, daily_limit: v })} 
+                icon={Wallet} 
+                suffix="HBAR" 
+                description="Maximum total HBAR volume allowed within a 24-hour period." 
+                placeholder="1000" 
+                presets={[500, 1000, 5000, 10000]}
+              />
+              <RuleInput 
+                label="Cooldown" 
+                value={rules.cooldown_seconds} 
+                onChange={(v: number) => setRules({ ...rules, cooldown_seconds: v })} 
+                icon={Clock} 
+                suffix="SECONDS" 
+                description="Minimum time interval required between two consecutive swaps." 
+                placeholder="60" 
+                presets={[10, 20, 60, 300]}
+              />
+              <div className="sm:col-span-2">
+                <RuleInput 
+                  label="Slippage Tolerance" 
+                  value={rules.slippage_tolerance} 
+                  onChange={(v: number) => setRules({ ...rules, slippage_tolerance: v })} 
+                  icon={Percent} 
+                  suffix="%" 
+                  description="Your transaction will revert if the price changes unfavorably by more than this percentage." 
+                  placeholder="0.5" 
+                  presets={[0.1, 0.5, 1, 3]}
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleSave}
+              disabled={loading || !hasChanges}
+              className="w-full bg-secondary text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-secondary/90 hover:shadow-lg hover:shadow-secondary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {loading ? "Saving..." : (<><Save className="w-4 h-4" />Save Configuration</>)}
+            </button>
+          </section>
         </div>
       </div>
     </div>
