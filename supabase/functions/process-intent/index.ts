@@ -245,6 +245,11 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Device not found" }), { status: 404 });
     }
 
+    // Check if device is disabled - Block all actions if disabled
+    if (device.status === "disabled") {
+      return new Response(JSON.stringify({ error: "DEVICE_DISABLED" }), { status: 403 });
+    }
+
     const { action, pairing_code } = JSON.parse(payloadStr);
 
     // Heartbeat

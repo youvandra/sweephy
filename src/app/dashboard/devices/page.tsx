@@ -149,12 +149,18 @@ export default function DevicesPage() {
   }
 
   async function toggleDeviceStatus(device: any) {
-    const newStatus = device.status === "disabled" ? "online" : "disabled";
+    // If current status is 'disabled', we want to enable it (set to 'offline' or 'online' depending on last seen, but 'offline' is safer as default state until it pings)
+    // If current status is NOT 'disabled' (i.e. 'online' or 'offline'), we want to disable it.
+    const newStatus = device.status === "disabled" ? "offline" : "disabled";
+    
     const { error } = await supabase.from("devices").update({ status: newStatus }).eq("id", device.id);
     
     if (!error) {
-      fetchDevices();
-      toast.success(`Device ${newStatus === "online" ? "enabled" : "disabled"} successfully`);
+      // Optimistically update local state to reflect change immediately without waiting for fetchDevices
+      setDevices(prevDevices => prevDevices.map(d => 
+        d.id === device.id ? { ...d, status: newStatus } : d
+      ));
+      toast.success(`Device ${newStatus === "disabled" ? "disabled" : "enabled"} successfully`);
     } else {
       toast.error("Failed to update device status");
     }
