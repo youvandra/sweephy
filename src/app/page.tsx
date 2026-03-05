@@ -1,11 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Activity, Shield, Zap, Tablet, Wallet } from "lucide-react";
-import Link from "next/link";
 import Image from "next/image";
-
 import { useAppKit, useAppKitAccount } from '@reown/appkit/react'
 import { useRouter } from 'next/navigation'
 import { AccountId } from "@hashgraph/sdk";
@@ -15,23 +12,13 @@ export default function Home() {
   const { isConnected, address } = useAppKitAccount()
   const router = useRouter()
   
-  const handleConnect = async () => {
-    if (isConnected) {
-      router.push('/dashboard')
-    } else {
-      await open()
-    }
-  }
-
-  // Effect to handle redirection after connection
+  // Handle redirection after connection
   useEffect(() => {
     async function syncProfile() {
       if (isConnected && address) {
-        // Normalize address to lowercase
         const normalizedAddress = address.toLowerCase();
-        
-        // Resolve Hedera Account ID from Mirror Node
         let hederaId = null;
+        
         try {
           const res = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${normalizedAddress}`);
           const data = await res.json();
@@ -39,184 +26,191 @@ export default function Home() {
             hederaId = data.account;
           }
         } catch (e) {
-          console.warn("Mirror Node lookup failed, trying local conversion");
-          try {
-            hederaId = AccountId.fromEvmAddress(0, 0, address).toString();
-          } catch (err) {}
+          console.warn("Mirror Node lookup failed");
         }
 
-        // Sync wallet address & Hedera ID with Supabase (Case-insensitive)
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, is_admin")
+          .select("id")
           .ilike("wallet_address", normalizedAddress)
           .limit(1)
           .maybeSingle();
         
         if (!profile) {
-          // New user, create profile
           await supabase.from("profiles").insert({
             wallet_address: normalizedAddress,
-            hedera_account_id: hederaId // Store the Hedera ID
+            hedera_account_id: hederaId
           });
-          router.push('/dashboard');
-        } else {
-          // Existing user, update Hedera ID if missing
-          if (hederaId) {
-            await supabase.from("profiles").update({ hedera_account_id: hederaId }).eq("id", profile.id);
-          }
-
-          // Check admin status for redirect
-          // Only redirect if we are currently on the landing page ("/")
-          // The router.push is inside syncProfile which runs on effect.
-          // This might be redundant if the user is already on dashboard, but since this is page.tsx (root),
-          // it is fine to redirect to dashboard.
-          if (profile.is_admin) {
-            // router.push('/dashboard/admin'); // Removed automatic admin redirect
-            router.push('/dashboard');
-          } else {
-            router.push('/dashboard');
-          }
+        } else if (hederaId) {
+          await supabase.from("profiles").update({ hedera_account_id: hederaId }).eq("id", profile.id);
         }
+        
+        router.push('/dashboard');
       }
     }
-    // Only run if we are actually connected and have an address
+
     if (isConnected && address) {
        syncProfile();
     }
   }, [isConnected, address, router])
 
+  const handleBuyDevice = () => {
+    window.open('https://sweephy.com/buy', '_blank');
+  };
+
+  const handleSetupDevice = async () => {
+    if (isConnected) {
+      router.push('/dashboard');
+    } else {
+      await open();
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-white font-sans text-secondary">
-      {/* Navigation */}
-      <nav className="flex items-center justify-between px-8 py-6 max-w-7xl mx-auto">
-        <div className="flex items-center gap-2">
-          <Image 
-            src="/Logos/Logo_mark-green_text-black.webp" 
-            alt="Sweephy" 
-            width={196} 
-            height={56} 
-            className="h-14 w-auto"
-            priority
-          />
-        </div>
-        <div className="hidden md:flex items-center gap-8 font-medium">
-          <a href="#features" className="hover:text-primary transition-colors">Features</a>
-          <a href="#security" className="hover:text-primary transition-colors">Security</a>
-          <button 
-            onClick={handleConnect}
-            className="bg-secondary text-white px-6 py-2 rounded-full font-bold hover:bg-secondary/90 transition-all cursor-pointer"
-          >
-            Setup
-          </button>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-[#00332c] via-[#004d40] to-[#001a17] font-sans text-white overflow-hidden relative">
+      {/* Background Glow Effect */}
+      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_left,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent opacity-50 pointer-events-none" />
+
+      {/* Navigation / Logo */}
+      <nav className="relative z-10 flex justify-center py-8">
+        <Image 
+          src="/Logos/Logo_all-white.webp" 
+          alt="Sweephy" 
+          width={180} 
+          height={50} 
+          className="h-10 w-auto"
+          priority
+        />
       </nav>
 
-      {/* Hero Section */}
-      <section className="px-8 py-20 max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
-        <div className="space-y-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-bold border border-primary/20">
-            <Zap className="w-4 h-4" />
-            Production Ready v1.0
-          </div>
-          <h1 className="text-6xl lg:text-7xl font-bold leading-tight">
-            1-Tap Swaps for <span className="text-primary">ESP32</span> Devices.
-          </h1>
-          <p className="text-xl text-alt-1 max-w-lg leading-relaxed">
-            Secure, auditable, and hardware-bound crypto trading. Connect your ESP32 device, set your rules, and swap with a single physical click.
-          </p>
-        </div>
-
-        <div className="relative hidden lg:block">
-          <div className="absolute inset-0 bg-primary/20 blur-[120px] rounded-full" />
-          <div className="relative bg-secondary rounded-[40px] p-8 border border-white/10 shadow-2xl">
-            {/* Mock Dashboard UI */}
-            <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <div className="w-12 h-12 bg-primary/20 rounded-2xl" />
-                <div className="flex gap-2">
-                  <div className="w-24 h-8 bg-white/5 rounded-full" />
-                  <div className="w-8 h-8 bg-white/5 rounded-full" />
-                </div>
-              </div>
-              <div className="h-40 bg-gradient-to-br from-primary/20 to-transparent rounded-3xl border border-primary/20" />
-              <div className="grid grid-cols-2 gap-4">
-                <div className="h-24 bg-white/5 rounded-3xl" />
-                <div className="h-24 bg-white/5 rounded-3xl" />
-              </div>
-            </div>
-            {/* ESP32 Floating Card */}
-            <div className="absolute -bottom-10 -left-10 bg-white p-6 rounded-3xl shadow-2xl border border-secondary-medium animate-bounce-slow">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-primary/10 rounded-2xl text-primary">
-                  <Tablet className="w-8 h-8" />
-                </div>
-                <div>
-                  <p className="text-xs text-alt-2 font-bold uppercase tracking-wider">Device Active</p>
-                  <p className="font-bold text-secondary">ESP32-S3 Node</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section id="features" className="bg-secondary-light py-24 px-8">
-        <div className="max-w-7xl mx-auto space-y-16">
-          <div className="text-center space-y-4">
-            <h2 className="text-4xl font-bold">Built for Security & Speed</h2>
-            <p className="text-alt-1">Enterprise-grade infrastructure for your personal desktop trading device.</p>
+      {/* Main Content */}
+      <main className="relative z-10 w-full max-w-[1920px] mx-auto px-6 md:px-12 2xl:px-24 pt-12 pb-20 flex flex-col lg:flex-row items-center justify-between gap-12 lg:gap-24 2xl:gap-32 min-h-[calc(100vh-120px)]">
+        
+        {/* Left Section */}
+        <div className="flex-1 flex flex-col justify-center max-w-xl 2xl:max-w-3xl text-left h-full pb-20">
+          {/* Title - Aligned with Image top */}
+          <div className="mb-auto pt-8 2xl:pt-16">
+            <h1 className="text-6xl md:text-8xl 2xl:text-9xl font-medium tracking-tight leading-[0.9]">
+              What is <br />
+              <span className="font-bold">sweephy?</span>
+            </h1>
           </div>
           
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              { icon: Shield, title: "AWS KMS Signing", desc: "Transactions are signed via FIPS 140-2 Level 3 hardware modules. Keys never leave the cloud." },
-              { icon: Wallet, title: "Multi-Wallet", desc: "Support for HashPack, WalletConnect, and custodial KMS wallets for maximum flexibility." },
-              { icon: Activity, title: "Real-time Audits", desc: "Every intent, signature, and transaction is logged in an immutable Postgres trail." },
-            ].map((feature, i) => (
-              <div key={i} className="bg-white p-10 rounded-[32px] border border-secondary-medium hover:shadow-xl transition-all group">
-                <div className="p-4 bg-primary/10 rounded-2xl text-primary w-fit mb-6 group-hover:bg-primary group-hover:text-white transition-colors">
-                  <feature.icon className="w-8 h-8" />
-                </div>
-                <h3 className="text-2xl font-bold mb-4">{feature.title}</h3>
-                <p className="text-alt-1 leading-relaxed">{feature.desc}</p>
+          {/* Description - Aligned with CTA area */}
+          <div className="pt-48 lg:pt-64 2xl:pt-80">
+             <p className="text-xl md:text-2xl 2xl:text-4xl text-gray-200 font-light leading-relaxed max-w-lg 2xl:max-w-2xl">
+              Sweephy is a smart desk device that enables busy professionals to monitor and swap crypto assets instantly — without opening their phone.
+            </p>
+          </div>
+        </div>
+
+        {/* Right Section */}
+        <div className="flex-1 flex flex-col items-start lg:items-end w-full h-full justify-between">
+          
+          {/* Hero Image Container - Aligned with Title */}
+          <div className="relative w-full aspect-video rounded-lg overflow-hidden shadow-2xl mb-auto">
+            {/* Placeholder for the laptop image - using a generic office/laptop placeholder */}
+            <div className="absolute inset-0 bg-gray-800">
+               <Image 
+                src="/landing/lp.gif"
+                alt="Sweephy Device Demo" 
+                fill
+                className="object-cover hover:opacity-100 transition-opacity duration-500"
+                unoptimized
+              />
+            </div>
+          </div>
+
+          {/* Bottom Area: Headline + CTA - Aligned with Description */}
+          <div className="flex flex-col items-start lg:items-end w-full pt-16 lg:pt-24 2xl:pt-32">
+            {/* Headline */}
+            <h2 className="text-5xl md:text-6xl 2xl:text-8xl font-bold uppercase tracking-tighter leading-[0.9] text-left lg:text-right w-full mb-8 2xl:mb-12">
+              1-TAP SWAPS FROM <br />
+              YOUR <span className="text-primary">DESK</span> .
+            </h2>
+
+            {/* Buttons */}
+            <div className="flex flex-row gap-4 w-full justify-start lg:justify-end">
+              <button 
+                onClick={handleBuyDevice}
+                className="px-8 py-3 2xl:px-12 2xl:py-5 bg-white text-secondary-darker rounded-full font-bold text-sm 2xl:text-lg tracking-wider hover:bg-gray-100 transition-all hover:-translate-y-0.5"
+                style={{ boxShadow: '5px 5px 0px 0px #2CC295' }}
+              >
+                BUY DEVICE
+              </button>
+              <button 
+                onClick={handleSetupDevice}
+                className="px-8 py-3 2xl:px-12 2xl:py-5 bg-primary text-secondary-darker rounded-full font-bold text-sm 2xl:text-lg tracking-wider hover:bg-primary/90 transition-all hover:-translate-y-0.5"
+                style={{ boxShadow: '5px 5px 0px 0px #032221' }}
+              >
+                SETUP DEVICE
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </main>
+
+      {/* Section 2: Marquee + Features */}
+      <section className="bg-secondary-light">
+        {/* Marquee Banner */}
+        <div className="bg-secondary-darker py-4 overflow-hidden border-y border-white/10">
+          <div className="flex w-max animate-marquee">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="flex items-center gap-8 mx-4">
+                <span className="text-xl md:text-2xl font-bold text-white uppercase tracking-widest">Crypto</span>
+                <span className="text-xl md:text-2xl font-bold text-primary uppercase tracking-widest">•</span>
+                <span className="text-xl md:text-2xl font-bold text-white uppercase tracking-widest">Stocks</span>
+                <span className="text-xl md:text-2xl font-bold text-primary uppercase tracking-widest">•</span>
+                <span className="text-xl md:text-2xl font-bold text-white uppercase tracking-widest">Prices</span>
+                <span className="text-xl md:text-2xl font-bold text-primary uppercase tracking-widest">•</span>
+                <span className="text-xl md:text-2xl font-bold text-white uppercase tracking-widest">Swaps</span>
+                <span className="text-xl md:text-2xl font-bold text-primary uppercase tracking-widest">•</span>
+                <span className="text-xl md:text-2xl font-bold text-white uppercase tracking-widest">Portfolio</span>
+                <span className="text-xl md:text-2xl font-bold text-primary uppercase tracking-widest">•</span>
+                <span className="text-xl md:text-2xl font-bold text-white uppercase tracking-widest">Real-time</span>
+                <span className="text-xl md:text-2xl font-bold text-primary uppercase tracking-widest">•</span>
               </div>
             ))}
           </div>
         </div>
-      </section>
 
-      {/* Footer */}
-      <footer className="py-12 px-8 border-t border-secondary-medium">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
-          <div className="flex items-center gap-2">
-            <Image 
-              src="/Logos/Logo_mark-green_text-black.webp" 
-              alt="Sweephy" 
-              width={196} 
-              height={56} 
-              className="h-14 w-auto"
+        {/* Split Content */}
+        <div className="flex flex-col lg:flex-row min-h-[80vh]">
+          {/* Left Content */}
+          <div className="flex-1 flex flex-col justify-center px-8 md:px-16 lg:px-24 py-20 bg-[#F1F7F6]">
+            <div className="max-w-xl">
+              <h2 className="text-4xl md:text-6xl font-bold mb-8 leading-tight" style={{ color: '#081819' }}>
+                What you care <br />
+                about at a glance
+              </h2>
+              
+              <p className="text-lg md:text-xl mb-10 leading-relaxed" style={{ color: '#081819' }}>
+                Sweephy is a retro-style display that lets you keep up with the things 
+                you care about, like real-time crypto prices, portfolio value, 
+                and instant swaps right from your desk.
+              </p>
+
+              <button 
+                className="px-8 py-3 border-2 rounded-full font-bold text-sm tracking-wider hover:bg-[#081819] hover:text-white transition-colors uppercase"
+                style={{ borderColor: '#081819', color: '#081819' }}
+              >
+                Learn More
+              </button>
+            </div>
+          </div>
+
+          {/* Right Image */}
+          <div className="flex-1 relative min-h-[400px] lg:min-h-full bg-gray-100">
+             <Image 
+              src="/landing/desk.png"
+              alt="Sweephy on Desk" 
+              fill
+              className="object-cover"
             />
           </div>
-          <p className="text-alt-2 text-sm">© 2026 Sweephy Protocol. Production Ready.</p>
-          <div className="flex gap-6 text-sm font-medium text-alt-1">
-            <a href="#" className="hover:text-primary transition-colors">Terms</a>
-            <a href="#" className="hover:text-primary transition-colors">Privacy</a>
-            <a href="#" className="hover:text-primary transition-colors">Github</a>
-          </div>
         </div>
-      </footer>
-
-      <style jsx global>{`
-        @keyframes bounce-slow {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-20px); }
-        }
-        .animate-bounce-slow {
-          animation: bounce-slow 4s ease-in-out infinite;
-        }
-      `}</style>
+      </section>
     </div>
   );
 }

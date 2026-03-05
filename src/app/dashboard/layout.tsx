@@ -101,14 +101,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
+  // ✅ Use useEffect for redirection instead of conditional rendering
+  useEffect(() => {
+    if (hydrated && !isConnected) {
+      redirect('/');
+    }
+  }, [hydrated, isConnected]);
+
   // ✅ Show nothing while AppKit is hydrating
   if (!hydrated) {
     return null;
   }
 
-  // ✅ Redirect to root page if user is not connected
+  // If we are hydrated and not connected, we return null while the useEffect redirects
   if (!isConnected) {
-    redirect('/');
+    return null;
   }
 
   return (
