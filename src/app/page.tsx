@@ -7,6 +7,7 @@ import { useAppKit, useAppKitAccount } from '@reown/appkit/react'
 import { useRouter } from 'next/navigation'
 import { AccountId } from "@hashgraph/sdk";
 import { Footer } from "@/components/Footer";
+import { Button } from "@/components/ui/Button";
 
 export default function Home() {
   const { open } = useAppKit()
@@ -132,18 +133,12 @@ export default function Home() {
 
             {/* Buttons */}
             <div className="flex flex-row gap-4 w-full justify-start lg:justify-end">
-              <button 
-                onClick={handleBuyDevice}
-                className="px-8 py-3 2xl:px-12 2xl:py-5 border-2 border-white bg-white text-[#081819] rounded-full font-bold text-sm 2xl:text-lg tracking-wider hover:bg-transparent hover:text-white! transition-colors uppercase cursor-pointer"
-              >
+              <Button variant="white" onClick={handleBuyDevice}>
                 BUY DEVICE
-              </button>
-              <button 
-                onClick={handleSetupDevice}
-                className="px-8 py-3 2xl:px-12 2xl:py-5 border-2 border-primary bg-primary text-[#081819] rounded-full font-bold text-sm 2xl:text-lg tracking-wider hover:bg-transparent hover:text-primary! transition-colors uppercase cursor-pointer"
-              >
+              </Button>
+              <Button variant="primary" onClick={handleSetupDevice}>
                 SETUP DEVICE
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -190,11 +185,9 @@ export default function Home() {
                 and instant swaps right from your desk.
               </p>
 
-              <button 
-                className="px-8 py-3 border-2 border-[#081819] text-[#081819] rounded-full font-bold text-sm tracking-wider hover:bg-[#081819] hover:text-white! transition-colors uppercase cursor-pointer"
-              >
+              <Button variant="outline-dark">
                 Learn More
-              </button>
+              </Button>
             </div>
           </div>
 

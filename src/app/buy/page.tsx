@@ -4,6 +4,7 @@ import Image from "next/image";
 import { ArrowLeft, Star, User, Quote } from "lucide-react";
 import Link from "next/link";
 import { Footer } from "@/components/Footer";
+import { Button } from "@/components/ui/Button";
 
 export default function BuyPage() {
   const reviews = [
@@ -81,12 +82,13 @@ export default function BuyPage() {
           </div>
 
           <div className="space-y-4 2xl:space-y-6 pt-4">
-             <button 
-                className="w-full py-4 2xl:py-6 bg-primary text-secondary-darker rounded-full font-bold text-lg 2xl:text-2xl tracking-wider hover:bg-primary/90 transition-all hover:-translate-y-0.5 shadow-lg shadow-primary/20 cursor-not-allowed opacity-80"
-                disabled
+             <Button 
+                variant="primary" 
+                fullWidth 
+                className="cursor-not-allowed"
               >
                 Coming Soon
-              </button>
+              </Button>
               <p className="text-center text-xs 2xl:text-base text-gray-500 uppercase tracking-widest">Free Shipping Worldwide</p>
           </div>
 
