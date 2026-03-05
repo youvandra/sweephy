@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import Image from "next/image";
 import { useAppKit, useAppKitAccount } from '@reown/appkit/react'
@@ -8,11 +8,27 @@ import { useRouter } from 'next/navigation'
 import { AccountId } from "@hashgraph/sdk";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/Button";
+import { motion, useScroll, useTransform, useSpring } from "framer-motion";
 
 export default function Home() {
   const { open } = useAppKit()
   const { isConnected, address } = useAppKitAccount()
   const router = useRouter()
+  
+  // Scroll Animation for Marquee
+  const marqueeRef = useRef(null);
+  const { scrollYProgress } = useScroll({
+    target: marqueeRef,
+    offset: ["start end", "end start"]
+  });
+
+  const smoothProgress = useSpring(scrollYProgress, {
+    stiffness: 30,
+    damping: 30,
+    restDelta: 0.001
+  });
+
+  const x = useTransform(smoothProgress, [0, 1], ["0%", "-10%"]);
   
   // Handle redirection after connection
   useEffect(() => {
@@ -78,9 +94,9 @@ export default function Home() {
         <Image 
           src="/Logos/Logo_all-white.webp" 
           alt="Sweephy" 
-          width={180} 
-          height={50} 
-          className="h-10 w-auto"
+          width={300} 
+          height={80} 
+          className="h-12 md:h-16 2xl:h-24 w-auto"
           priority
         />
       </nav>
@@ -148,8 +164,8 @@ export default function Home() {
       {/* Section 2: Marquee + Features */}
       <section className="bg-secondary-light">
         {/* Marquee Banner */}
-        <div className="bg-secondary-darker py-4 overflow-hidden border-y border-white/10">
-          <div className="flex w-max animate-marquee">
+        <div className="bg-secondary-darker py-4 overflow-hidden border-y border-white/10" ref={marqueeRef}>
+          <motion.div style={{ x }} className="flex w-max">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="flex items-center gap-8 mx-4">
                 <span className="text-xl md:text-2xl font-bold text-white uppercase tracking-widest">Crypto</span>
@@ -166,7 +182,7 @@ export default function Home() {
                 <span className="text-xl md:text-2xl font-bold text-primary uppercase tracking-widest">•</span>
               </div>
             ))}
-          </div>
+          </motion.div>
         </div>
 
         {/* Split Content */}
