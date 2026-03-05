@@ -21,9 +21,9 @@ export default function AboutPage() {
         <Image 
           src="/Logos/Logo_all-white.webp" 
           alt="Sweephy" 
-          width={150} 
-          height={42} 
-          className="h-8 2xl:h-12 w-auto"
+          width={300} 
+          height={80} 
+          className="h-12 md:h-16 2xl:h-24 w-auto"
           priority
         />
         <div className="w-20" />

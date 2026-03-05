@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 
 export default function ContactPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-black font-sans text-white overflow-hidden relative">
+    <div className="min-h-screen bg-[#0E1E1F] font-sans text-white overflow-hidden relative">
       {/* Background Glow Effect */}
       <div className="absolute top-0 right-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent opacity-50 pointer-events-none" />
 
@@ -21,9 +21,9 @@ export default function ContactPage() {
         <Image 
           src="/Logos/Logo_all-white.webp" 
           alt="Sweephy" 
-          width={150} 
-          height={42} 
-          className="h-8 2xl:h-12 w-auto"
+          width={300} 
+          height={80} 
+          className="h-12 md:h-16 2xl:h-24 w-auto"
           priority
         />
         <div className="w-20" />
