@@ -193,8 +193,7 @@ export default function Home() {
               </p>
 
               <button 
-                className="px-8 py-3 border-2 rounded-full font-bold text-sm tracking-wider hover:bg-[#081819] hover:text-white transition-colors uppercase"
-                style={{ borderColor: '#081819', color: '#081819' }}
+                className="px-8 py-3 border-2 border-[#081819] text-[#081819] rounded-full font-bold text-sm tracking-wider hover:bg-[#081819] hover:text-white transition-colors uppercase"
               >
                 Learn More
               </button>
