@@ -4,7 +4,6 @@ import {
   Client, AccountId, TransferTransaction,
   Hbar, TransactionId, PublicKey,
   ContractExecuteTransaction, ContractFunctionParameters,
-  ContractCallQuery,
   ContractId,
   TokenId,
 } from "npm:@hashgraph/sdk@2.46.0";
@@ -26,14 +25,6 @@ const SECP256K1_N = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBF
 const SAUCERSWAP_ROUTER_ID = ContractId.fromString(getEnv("SAUCERSWAP_ROUTER_ID") || "0.0.3045981");
 const WHBAR_TOKEN_ID = TokenId.fromString(getEnv("WHBAR_TOKEN_ID") || "0.0.1456986");
 const USDC_TOKEN_ID = TokenId.fromString(getEnv("USDC_TOKEN_ID") || "0.0.456858");
-
-// Node accounts for all transactions
-const NODE_ACCOUNT_IDS = [
-  new AccountId(3),
-  new AccountId(4),
-  new AccountId(5),
-  new AccountId(6),
-];
 
 const kmsClient = new KMSClient({
   region: AWS_REGION,

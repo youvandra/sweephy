@@ -8,7 +8,7 @@ import { usePathname } from "next/navigation";
 import Image from "next/image";
 
 import { useAppKitAccount, useAppKit, useDisconnect } from '@reown/appkit/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, redirect } from 'next/navigation'
 
 import { AccountId } from "@hashgraph/sdk";
 
@@ -101,18 +101,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
-  // ✅ Show loading spinner while AppKit is hydrating
-  // Prevents premature rendering of children before auth state is ready
-  // and avoids premature redirects
+  // ✅ Show nothing while AppKit is hydrating
   if (!hydrated) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-secondary-light">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-alt-1 font-medium">Loading...</p>
-        </div>
-      </div>
-    );
+    return null;
+  }
+
+  // ✅ Redirect to root page if user is not connected
+  if (!isConnected) {
+    redirect('/');
   }
 
   return (
