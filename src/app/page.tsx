@@ -134,15 +134,13 @@ export default function Home() {
             <div className="flex flex-row gap-4 w-full justify-start lg:justify-end">
               <button 
                 onClick={handleBuyDevice}
-                className="px-8 py-3 2xl:px-12 2xl:py-5 bg-white text-secondary-darker rounded-full font-bold text-sm 2xl:text-lg tracking-wider hover:bg-gray-100 transition-all hover:-translate-y-0.5"
-                style={{ boxShadow: '5px 5px 0px 0px #2CC295' }}
+                className="px-8 py-3 2xl:px-12 2xl:py-5 border-2 border-white bg-white text-[#081819] rounded-full font-bold text-sm 2xl:text-lg tracking-wider hover:bg-transparent hover:text-white! transition-colors uppercase cursor-pointer"
               >
                 BUY DEVICE
               </button>
               <button 
                 onClick={handleSetupDevice}
-                className="px-8 py-3 2xl:px-12 2xl:py-5 bg-primary text-secondary-darker rounded-full font-bold text-sm 2xl:text-lg tracking-wider hover:bg-primary/90 transition-all hover:-translate-y-0.5"
-                style={{ boxShadow: '5px 5px 0px 0px #032221' }}
+                className="px-8 py-3 2xl:px-12 2xl:py-5 border-2 border-primary bg-primary text-[#081819] rounded-full font-bold text-sm 2xl:text-lg tracking-wider hover:bg-transparent hover:text-primary! transition-colors uppercase cursor-pointer"
               >
                 SETUP DEVICE
               </button>
@@ -193,7 +191,7 @@ export default function Home() {
               </p>
 
               <button 
-                className="px-8 py-3 border-2 border-[#081819] text-[#081819] rounded-full font-bold text-sm tracking-wider hover:bg-[#081819] hover:text-white transition-colors uppercase"
+                className="px-8 py-3 border-2 border-[#081819] text-[#081819] rounded-full font-bold text-sm tracking-wider hover:bg-[#081819] hover:text-white! transition-colors uppercase cursor-pointer"
               >
                 Learn More
               </button>
