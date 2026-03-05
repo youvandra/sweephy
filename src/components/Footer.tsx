@@ -39,17 +39,17 @@ export function Footer() {
               <h3 className="text-sm font-mono uppercase tracking-wider text-gray-400">About</h3>
               <ul className="space-y-3">
                 <li>
-                  <Link href="#" className="text-sm hover:text-primary transition-colors">
+                  <Link href="/about" className="text-sm hover:text-primary transition-colors">
                     About Sweephy
                   </Link>
                 </li>
                 <li>
-                  <Link href="#" className="text-sm hover:text-primary transition-colors">
+                  <Link href="/faq" className="text-sm hover:text-primary transition-colors">
                     FAQ
                   </Link>
                 </li>
                 <li>
-                  <Link href="#" className="text-sm hover:text-primary transition-colors">
+                  <Link href="/contact" className="text-sm hover:text-primary transition-colors">
                     Contact Us
                   </Link>
                 </li>
