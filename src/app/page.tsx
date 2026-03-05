@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useAppKit, useAppKitAccount } from '@reown/appkit/react'
 import { useRouter } from 'next/navigation'
 import { AccountId } from "@hashgraph/sdk";
+import { Footer } from "@/components/Footer";
 
 export default function Home() {
   const { open } = useAppKit()
@@ -55,7 +56,7 @@ export default function Home() {
   }, [isConnected, address, router])
 
   const handleBuyDevice = () => {
-    window.open('https://sweephy.com/buy', '_blank');
+    router.push('/buy');
   };
 
   const handleSetupDevice = async () => {
@@ -211,6 +212,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <Footer />
     </div>
   );
 }
