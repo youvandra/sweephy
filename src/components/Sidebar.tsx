@@ -27,6 +27,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const menuItems = [
     { label: "Home", href: "/" },
     { label: "Shop", href: "/buy", hasSub: true },
+    { label: "Tokenomics", href: "/tokenomics" },
     { label: "Apps", href: "/dashboard", hasSub: true }, // Using dashboard as Apps/Setup
     { label: "Learn", href: "/about" },
     { label: "For Business", href: "#", hasSub: true },

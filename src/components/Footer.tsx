@@ -56,6 +56,11 @@ export function Footer() {
                   </Link>
                 </li>
                 <li>
+                  <Link href="/tokenomics" className="text-sm hover:text-primary transition-colors">
+                    Tokenomics
+                  </Link>
+                </li>
+                <li>
                   <Link href="/faq" className="text-sm hover:text-primary transition-colors">
                     FAQ
                   </Link>
