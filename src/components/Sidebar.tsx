@@ -26,20 +26,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const menuItems = [
     { label: "Home", href: "/" },
-    { label: "Shop", href: "/buy", hasSub: true },
+    { label: "Shop", href: "/buy" },
     { label: "Tokenomics", href: "/tokenomics" },
-    { label: "Apps", href: "/dashboard", hasSub: true }, // Using dashboard as Apps/Setup
-    { label: "Learn", href: "/about" },
-    { label: "For Business", href: "#", hasSub: true },
-    { label: "Reviews", href: "/buy#reviews" },
+    { label: "Apps", href: "/dashboard" }, // Using dashboard as Apps/Setup
+    { label: "About", href: "/about" },
+    { label: "Contact", href: "/contact" },
+    { label: "FAQ", href: "/faq" },
   ];
 
   const footerLinks = [
-    { label: "About", href: "/about" },
-    { label: "Community", href: "#" },
-    { label: "Contact Us", href: "/contact" },
-    { label: "FAQ", href: "/faq" },
-    { label: "Support", href: "#" },
+    { label: "Return Policy", href: "/return-policy" },
+    { label: "Terms of Service", href: "/terms" },
   ];
 
   return (
