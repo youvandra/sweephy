@@ -1,10 +1,11 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowLeft, Star, User, Quote } from "lucide-react";
+import { Star, User, Quote } from "lucide-react";
 import Link from "next/link";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/Button";
+import { Navbar } from "@/components/Navbar";
 
 export default function BuyPage() {
   const reviews = [
@@ -36,22 +37,8 @@ export default function BuyPage() {
       {/* Background Glow Effect */}
       <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_left,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent opacity-50 pointer-events-none" />
 
-      {/* Navigation / Logo */}
-      <nav className="relative z-10 flex justify-between items-center py-8 px-6 w-full max-w-[1920px] mx-auto 2xl:px-24">
-        <Link href="/" className="flex items-center gap-2 text-white/80 hover:text-white transition-colors">
-          <ArrowLeft className="w-5 h-5 2xl:w-6 2xl:h-6" />
-          <span className="2xl:text-lg">Back</span>
-        </Link>
-        <Image 
-          src="/Logos/Logo_all-white.webp" 
-          alt="Sweephy" 
-          width={150} 
-          height={42} 
-          className="h-8 2xl:h-12 w-auto"
-          priority
-        />
-        <div className="w-20" /> {/* Spacer for centering */}
-      </nav>
+      {/* Navbar */}
+      <Navbar variant="dark" />
 
       <main className="relative z-10 w-full max-w-[1920px] mx-auto px-6 2xl:px-24 py-12 2xl:py-24 flex flex-col lg:flex-row gap-12 lg:gap-24 2xl:gap-40 items-center">
         {/* Left: Product Image */}

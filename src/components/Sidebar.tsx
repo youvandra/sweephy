@@ -2,6 +2,7 @@
 
 import { X, ChevronRight, Facebook, Instagram, Twitter, Github } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect } from "react";
 
@@ -55,48 +56,57 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
           {/* Sidebar Panel */}
           <motion.div
-            initial={{ x: "-100%" }}
+            initial={{ x: "100%" }}
             animate={{ x: 0 }}
-            exit={{ x: "-100%" }}
+            exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed top-0 left-0 h-full w-[300px] md:w-[400px] bg-black text-white z-50 flex flex-col p-8 shadow-2xl"
+            className="fixed top-0 right-0 h-full w-[300px] md:w-[400px] bg-[#081819] text-white z-50 flex flex-col p-8 shadow-2xl font-sans"
           >
-            {/* Close Button */}
-            <button 
-              onClick={onClose}
-              className="absolute top-8 left-8 p-2 rounded-full transition-transform hover:rotate-90 duration-300"
-            >
-              <X className="w-8 h-8 md:w-10 md:h-10" />
-            </button>
+            {/* Header: Logo & Close */}
+            <div className="flex items-center justify-between mb-16 flex-row-reverse">
+              <Image 
+                src="/Logos/Logo_all-white.webp" 
+                alt="Sweephy" 
+                width={120} 
+                height={32} 
+                className="h-8 w-auto opacity-90"
+              />
+              <button 
+                onClick={onClose}
+                className="p-2 -ml-2 rounded-full transition-transform hover:rotate-90 duration-300 text-white/80 hover:text-white"
+              >
+                <X className="w-8 h-8 md:w-10 md:h-10" />
+              </button>
+            </div>
 
             {/* Main Menu */}
-            <div className="mt-20 space-y-6">
+            <div className="space-y-6 text-right">
               {menuItems.map((item, index) => (
                 <Link 
                   key={index} 
                   href={item.href}
                   onClick={onClose}
-                  className="group flex items-center justify-between text-2xl md:text-3xl font-bold hover:text-gray-300 transition-colors"
+                  className="group flex items-center justify-end gap-4 text-2xl md:text-3xl font-bold hover:text-primary transition-colors"
                 >
-                  <span>{item.label}</span>
                   {item.hasSub && (
-                    <ChevronRight className="w-5 h-5 md:w-6 md:h-6 text-gray-500 group-hover:text-white transition-colors" />
+                    <ChevronRight className="w-5 h-5 md:w-6 md:h-6 text-white/30 group-hover:text-primary transition-colors rotate-180" />
                   )}
+                  <span>{item.label}</span>
                 </Link>
               ))}
             </div>
 
             {/* Divider */}
-            <div className="my-8 border-t border-white/20" />
+            <div className="my-8 border-t border-white/10" />
 
             {/* Footer Links */}
-            <div className="space-y-4">
+            <div className="space-y-4 text-right">
               {footerLinks.map((link, index) => (
                 <Link
                   key={index}
                   href={link.href}
                   onClick={onClose}
-                  className="block text-lg text-gray-300 hover:text-white transition-colors"
+                  className="block text-lg text-gray-400 hover:text-primary transition-colors"
                 >
                   {link.label}
                 </Link>
@@ -104,17 +114,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             </div>
 
             {/* Social Icons */}
-            <div className="mt-auto flex gap-6 pt-8">
-              <Link href="#" className="hover:text-primary transition-colors">
+            <div className="mt-auto flex justify-end gap-6 pt-8">
+              <Link href="#" className="text-gray-400 hover:text-primary transition-colors">
                 <Facebook className="w-6 h-6" />
               </Link>
-              <Link href="#" className="hover:text-primary transition-colors">
+              <Link href="#" className="text-gray-400 hover:text-primary transition-colors">
                 <Instagram className="w-6 h-6" />
               </Link>
-              <Link href="#" className="hover:text-primary transition-colors">
+              <Link href="#" className="text-gray-400 hover:text-primary transition-colors">
                 <Twitter className="w-6 h-6" />
               </Link>
-              <Link href="#" className="hover:text-primary transition-colors">
+              <Link href="#" className="text-gray-400 hover:text-primary transition-colors">
                 <Github className="w-6 h-6" />
               </Link>
             </div>
