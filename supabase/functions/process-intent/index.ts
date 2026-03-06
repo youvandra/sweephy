@@ -315,7 +315,7 @@ Deno.serve(async (req) => {
       const encoder = new TextEncoder();
       const state = { intentId: null as string | null };
 
-      const updateIntentStatus = async (status: string, txId: string, note: string, amount?: number) => {
+      const updateIntentStatus = async (status: string, txId: string, note: string, amount?: number, extra?: any) => {
         if (!state.intentId) return;
         const updates: any = {
           status,
@@ -323,6 +323,13 @@ Deno.serve(async (req) => {
           note: note, // Save failure reason or additional info
         };
         if (amount !== undefined) updates.amount = amount;
+        if (extra) {
+            if (extra.tx_id_swap) updates.tx_id_swap = extra.tx_id_swap;
+            if (extra.tx_id_transfer) updates.tx_id_transfer = extra.tx_id_transfer;
+            if (extra.tx_id_refund) updates.tx_id_refund = extra.tx_id_refund;
+            if (extra.tx_id_receipt) updates.tx_id_receipt = extra.tx_id_receipt;
+            if (extra.amount_received) updates.amount_received = extra.amount_received;
+        }
         
         await supabase.from("intents").update(updates).eq("id", state.intentId);
       };
@@ -507,7 +514,7 @@ Deno.serve(async (req) => {
               ]);
 
               transferSucceeded = true;
-              await updateIntentStatus("processing", txId, "Transfer OK", amountHbar);
+              await updateIntentStatus("processing", txId, "Transfer OK", amountHbar, { tx_id_transfer: txId });
 
               try {
                 // We only swap the original requested amount, keeping the buffer in KMS to cover the fee
@@ -559,7 +566,7 @@ Deno.serve(async (req) => {
                       const successTx = transactions?.find((t: any) => t.result === "SUCCESS");
                       if (successTx) {
                         transferSucceeded = true;
-                        await updateIntentStatus("processing", txId, "Recovered from " + txErr.message, amountHbar);
+                        await updateIntentStatus("processing", txId, "Recovered from " + txErr.message, amountHbar, { tx_id_transfer: txId });
                         send("STATUS:Transfer Verified (Recovered)");
 
                         await executeSwap(amountHbar, userAccountId, txId);
@@ -685,14 +692,17 @@ Deno.serve(async (req) => {
                 swapCompleted = true;
 
                 send("STATUS:Transferring USDC...");
+                const estimatedOutFormatted = ethers.formatUnits(estimatedOut, 6);
+                
                 await updateIntentStatus(
                   "completed",
                   txId,
                   `Swap complete. Est: ${estimatedOut} uUSDC, Min: ${amountOutMin} uUSDC`,
                   amountHbar,
+                  { tx_id_swap: swapTxId, tx_id_receipt: swapTxId, amount_received: estimatedOutFormatted }
                 );
 
-                send("SUCCESS:" + txId);
+                send("SUCCESS:" + estimatedOutFormatted);
 
               } catch (swapErr: any) {
                 if (swapCompleted) {

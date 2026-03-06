@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Search, Download, Filter, FileText, CheckCircle2, XCircle, AlertTriangle, Shield, ChevronLeft, ChevronRight, X, ExternalLink } from "lucide-react";
+import { Search, Download, Filter, FileText, CheckCircle2, XCircle, AlertTriangle, Shield, ChevronLeft, ChevronRight, X, ExternalLink, Activity, ArrowRightLeft, RefreshCw, RotateCcw, Wallet } from "lucide-react";
 import { useAppKitAccount } from "@reown/appkit/react";
 import { useToast } from "@/components/ui/Toast";
 
@@ -323,40 +323,209 @@ export default function AuditPage() {
         </div>
       )}
 
-      {selectedLog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-2xl max-w-md w-full relative animate-in zoom-in-95 duration-200">
-            <button 
-              onClick={() => setSelectedLog(null)}
-              className="absolute top-6 right-6 p-2 rounded-full hover:bg-gray-100 text-gray-400 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            
-            <div className="text-center space-y-6">
-              <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto text-red-500">
-                <AlertTriangle className="w-8 h-8" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-secondary">Transaction Failed</h3>
-                <p className="text-gray-500 mt-2 text-sm">Details regarding this failed transaction.</p>
-              </div>
-              
-              <div className="bg-gray-50 p-4 rounded-xl text-left space-y-3">
+      {/* Success/Details Modal */}
+      {selectedLog && selectedLog.status === 'completed' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-[24px] w-full max-w-lg shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-green-50/50 p-6 border-b border-green-100 flex items-start justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-green-100 text-green-600 rounded-xl shadow-sm">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
                 <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase">Error Reason</p>
-                  <p className="text-sm font-medium text-secondary mt-1 break-words">
-                    {selectedLog.note || "No specific error message provided."}
-                  </p>
-                </div>∂
+                  <h3 className="text-xl font-bold text-secondary">Swap Successful</h3>
+                  <p className="text-sm text-gray-500 mt-0.5">Transaction completed successfully</p>
+                </div>
               </div>
-
               <button 
                 onClick={() => setSelectedLog(null)}
-                className="w-full bg-secondary text-white py-3.5 rounded-xl font-bold hover:bg-secondary/90 transition-all"
+                className="p-2 hover:bg-white rounded-full transition-colors text-gray-400 hover:text-gray-600"
               >
-                Close
+                <X className="w-5 h-5" />
               </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Amount Received Card */}
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-5 rounded-2xl border border-green-100 text-center relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                   <Wallet className="w-24 h-24 text-green-600" />
+                </div>
+                <p className="text-xs font-bold text-green-600 uppercase tracking-wider mb-2">You Received</p>
+                <div className="text-3xl font-extrabold text-green-700">
+                  {selectedLog.amount_received || "0.00"} <span className="text-lg text-green-600/80">USDC</span>
+                </div>
+                <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-white/60 rounded-full text-[10px] font-bold text-green-800 border border-green-200/50">
+                   <CheckCircle2 className="w-3 h-3" />
+                   Verified on-chain
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">Transaction Flow</h4>
+                
+                <div className="relative space-y-4 before:absolute before:left-[19px] before:top-4 before:bottom-4 before:w-0.5 before:bg-gray-100">
+                  
+                  {/* Step 1: Transfer */}
+                  <div className="relative flex items-center gap-4 group">
+                     <div className="relative z-10 w-10 h-10 rounded-full bg-white border-2 border-blue-100 flex items-center justify-center shadow-sm group-hover:border-blue-500 transition-colors">
+                        <ArrowRightLeft className="w-4 h-4 text-blue-500" />
+                     </div>
+                     <div className="flex-1 bg-gray-50 p-3 rounded-xl border border-gray-100 group-hover:border-blue-200 transition-colors">
+                        <div className="flex justify-between items-center mb-1">
+                           <p className="text-xs font-bold text-gray-700">1. HBAR Transfer</p>
+                           <span className="text-[10px] font-mono text-gray-400">User → KMS</span>
+                        </div>
+                        <a 
+                           href={`https://hashscan.io/mainnet/transaction/${selectedLog.tx_id_transfer || selectedLog.tx_id}`}
+                           target="_blank"
+                           rel="noopener noreferrer" 
+                           className="text-[10px] text-blue-600 hover:underline truncate block font-mono"
+                        >
+                           {selectedLog.tx_id_transfer || selectedLog.tx_id}
+                        </a>
+                     </div>
+                  </div>
+
+                  {/* Step 2: Swap */}
+                  <div className="relative flex items-center gap-4 group">
+                     <div className="relative z-10 w-10 h-10 rounded-full bg-white border-2 border-purple-100 flex items-center justify-center shadow-sm group-hover:border-purple-500 transition-colors">
+                        <RefreshCw className="w-4 h-4 text-purple-500" />
+                     </div>
+                     <div className="flex-1 bg-gray-50 p-3 rounded-xl border border-gray-100 group-hover:border-purple-200 transition-colors">
+                        <div className="flex justify-between items-center mb-1">
+                           <p className="text-xs font-bold text-gray-700">2. Swap Execution</p>
+                           <span className="text-[10px] font-mono text-gray-400">SaucerSwap V2</span>
+                        </div>
+                        <a 
+                           href={`https://hashscan.io/mainnet/transaction/${selectedLog.tx_id_swap}`}
+                           target="_blank"
+                           rel="noopener noreferrer" 
+                           className="text-[10px] text-purple-600 hover:underline truncate block font-mono"
+                        >
+                           {selectedLog.tx_id_swap || "Pending..."}
+                        </a>
+                     </div>
+                  </div>
+
+                  {/* Step 3: Receipt/Main TX */}
+                  <div className="relative flex items-center gap-4 group">
+                     <div className="relative z-10 w-10 h-10 rounded-full bg-white border-2 border-green-100 flex items-center justify-center shadow-sm group-hover:border-green-500 transition-colors">
+                        <CheckCircle2 className="w-4 h-4 text-green-500" />
+                     </div>
+                     <div className="flex-1 bg-gray-50 p-3 rounded-xl border border-gray-100 group-hover:border-green-200 transition-colors">
+                        <div className="flex justify-between items-center mb-1">
+                           <p className="text-xs font-bold text-gray-700">3. Final Receipt</p>
+                           <span className="text-[10px] font-mono text-gray-400">USDC Received</span>
+                        </div>
+                        <a 
+                           href={`https://hashscan.io/mainnet/transaction/${selectedLog.tx_id_receipt || selectedLog.tx_id}`}
+                           target="_blank"
+                           rel="noopener noreferrer" 
+                           className="text-[10px] text-green-600 hover:underline truncate block font-mono"
+                        >
+                           {selectedLog.tx_id_receipt || selectedLog.tx_id}
+                        </a>
+                     </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
+               <button 
+                  onClick={() => setSelectedLog(null)}
+                  className="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-all text-sm"
+               >
+                  Close Details
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error/Failed Modal */}
+      {selectedLog && selectedLog.status === 'failed' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-[24px] w-full max-w-lg shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-red-50/50 p-6 border-b border-red-100 flex items-start justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-red-100 text-red-600 rounded-xl shadow-sm">
+                  <XCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-secondary">Transaction Failed</h3>
+                  <p className="text-sm text-gray-500 mt-0.5">Action could not be completed</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedLog(null)}
+                className="p-2 hover:bg-white rounded-full transition-colors text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+               {/* Error Message */}
+               <div className="bg-red-50 p-4 rounded-xl border border-red-100">
+                  <h4 className="text-xs font-bold text-red-500 uppercase tracking-wider mb-2">Error Reason</h4>
+                  <p className="text-sm text-red-700 font-medium">
+                     {selectedLog.note || "Unknown error occurred during processing."}
+                  </p>
+               </div>
+
+               {/* Refund Info if applicable */}
+               {selectedLog.tx_id_refund && (
+                  <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 flex items-start gap-3">
+                     <RotateCcw className="w-5 h-5 text-orange-500 mt-0.5" />
+                     <div>
+                        <h4 className="text-sm font-bold text-orange-700">Funds Refunded</h4>
+                        <p className="text-xs text-orange-600 mt-1">Your HBAR has been returned to your wallet.</p>
+                        <a 
+                           href={`https://hashscan.io/mainnet/transaction/${selectedLog.tx_id_refund}`}
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           className="text-xs font-bold text-orange-700 underline mt-2 block"
+                        >
+                           View Refund TX
+                        </a>
+                     </div>
+                  </div>
+               )}
+
+               {/* Transaction IDs */}
+               <div className="space-y-3 pt-4 border-t border-gray-100">
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Transaction Trace</h4>
+                  
+                  {selectedLog.tx_id && selectedLog.tx_id !== 'failed' && (
+                     <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500">Initial Request:</span>
+                        <a href={`https://hashscan.io/mainnet/transaction/${selectedLog.tx_id}`} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 hover:underline">
+                           {selectedLog.tx_id.substring(0, 16)}...
+                        </a>
+                     </div>
+                  )}
+                  
+                  {selectedLog.tx_id_transfer && (
+                     <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500">Transfer Attempt:</span>
+                        <a href={`https://hashscan.io/mainnet/transaction/${selectedLog.tx_id_transfer}`} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 hover:underline">
+                           {selectedLog.tx_id_transfer.substring(0, 16)}...
+                        </a>
+                     </div>
+                  )}
+               </div>
+            </div>
+
+            <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
+               <button 
+                  onClick={() => setSelectedLog(null)}
+                  className="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-all text-sm"
+               >
+                  Close
+               </button>
             </div>
           </div>
         </div>
@@ -415,14 +584,12 @@ export default function AuditPage() {
                     </td>
                     <td className="px-6 py-4 flex justify-end">
                       {log.status === "completed" && log.tx_id && log.tx_id !== 'pending' && log.tx_id !== 'failed' ? (
-                        <a 
-                          href={`https://hashscan.io/mainnet/transaction/${log.tx_id}`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
+                        <button
+                          onClick={() => setSelectedLog(log)}
                           className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-bold w-fit transition-colors border border-gray-200"
                         >
                           Details
-                        </a>
+                        </button>
                       ) : log.status === "failed" ? (
                         <button
                           onClick={() => setSelectedLog(log)}
