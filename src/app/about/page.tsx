@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/Button";
 import { Navbar } from "@/components/Navbar";
+import { ShoppingCart } from "lucide-react";
 
 export default function AboutPage() {
   return (
@@ -57,6 +58,7 @@ export default function AboutPage() {
             </p>
             <Link href="/buy">
               <Button variant="primary" className="mt-4">
+                <ShoppingCart className="w-4 h-4" />
                 Get Yours
               </Button>
             </Link>

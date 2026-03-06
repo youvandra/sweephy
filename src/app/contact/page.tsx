@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Mail, MapPin, Phone } from "lucide-react";
+import { Mail, MapPin, Phone, Send } from "lucide-react";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/Button";
 import { Navbar } from "@/components/Navbar";
@@ -88,6 +88,7 @@ export default function ContactPage() {
             </div>
 
             <Button variant="primary" fullWidth>
+              <Send className="w-4 h-4" />
               Send Message
             </Button>
           </form>

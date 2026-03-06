@@ -10,7 +10,7 @@ import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/Button";
 import { Navbar } from "@/components/Navbar";
 import { motion, useScroll, useTransform, useSpring } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShoppingCart, Settings, ArrowRight } from "lucide-react";
 
 export default function Home() {
   const { open } = useAppKit()
@@ -170,9 +170,11 @@ export default function Home() {
 
                 <div className="flex flex-col md:flex-row gap-4 w-full items-start lg:justify-end lg:items-end">
                   <Button variant="white" onClick={handleBuyDevice}>
+                    <ShoppingCart className="w-4 h-4 2xl:w-5 2xl:h-5" />
                     BUY DEVICE
                   </Button>
                   <Button variant="primary" onClick={handleSetupDevice}>
+                    <Settings className="w-4 h-4 2xl:w-5 2xl:h-5" />
                     SETUP DEVICE
                   </Button>
                 </div>
@@ -225,6 +227,7 @@ export default function Home() {
 
               <Button variant="outline-dark">
                 Learn More
+                <ArrowRight className="w-4 h-4 2xl:w-5 2xl:h-5" />
               </Button>
             </div>
           </div>

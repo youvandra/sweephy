@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/Button";
@@ -93,6 +93,7 @@ export default function FAQPage() {
           <p className="text-xl text-gray-300">Still have questions?</p>
           <Link href="/contact">
             <Button variant="outline-dark" className="border-white text-white hover:bg-white hover:text-secondary-darker!">
+              <MessageSquare className="w-4 h-4" />
               Contact Support
             </Button>
           </Link>

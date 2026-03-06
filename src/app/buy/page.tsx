@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Star, User, Quote } from "lucide-react";
+import { Star, User, Quote, Hourglass } from "lucide-react";
 import Link from "next/link";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/Button";
@@ -74,6 +74,7 @@ export default function BuyPage() {
                 fullWidth 
                 className="cursor-not-allowed"
               >
+                <Hourglass className="w-4 h-4" />
                 Coming Soon
               </Button>
               <p className="text-center text-xs 2xl:text-base text-gray-500 uppercase tracking-widest">Free Shipping Worldwide</p>

@@ -13,7 +13,7 @@ export function Button({
   fullWidth = false,
   ...props 
 }: ButtonProps) {
-  const baseStyles = "px-8 py-3 2xl:px-12 2xl:py-5 rounded-full font-bold text-sm 2xl:text-lg tracking-wider transition-colors uppercase cursor-pointer border-2";
+  const baseStyles = "inline-flex items-center justify-center gap-2 px-8 py-3 2xl:px-12 2xl:py-5 rounded-full font-bold text-sm 2xl:text-lg tracking-wider transition-colors uppercase cursor-pointer border-2";
   
   const variants = {
     primary: "border-primary bg-primary text-[#081819] hover:bg-transparent hover:text-primary!",
