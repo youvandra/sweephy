@@ -233,15 +233,21 @@ export default function RulesPage() {
       // Execute transaction via wallet provider
       let result;
       try {
+        // Try the standard format first (params array)
         result = await provider.request({ method: "hedera_signAndExecuteTransaction", params: [params] });
-      } catch {
+      } catch (e1) {
         try {
+          // Fallback: Some wallets might expect the object directly if they deviate from spec
           result = await provider.request({ method: "hedera_signAndExecuteTransaction", params });
-        } catch {
+        } catch (e2) {
           try {
-            result = await provider.request({ method: "hedera_signTransaction", params: [params] });
+             // Fallback to sign only if execution fails (though logic below assumes executed)
+             // Or try with just the transactionList string if param structure is different
+             const simpleParams = { transactionList: txBase64 };
+             result = await provider.request({ method: "hedera_signAndExecuteTransaction", params: [simpleParams] });
           } catch (e3: any) {
-            throw new Error("Wallet rejected the transaction. " + e3.message);
+             console.error("Allowance Grant Error:", e3);
+             throw new Error("Wallet rejected the transaction or method not supported.");
           }
         }
       }

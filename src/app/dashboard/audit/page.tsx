@@ -412,14 +412,6 @@ export default function AuditPage() {
               </div>
             </div>
             
-            <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
-               <button 
-                  onClick={() => setSelectedLog(null)}
-                  className="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-all text-sm"
-               >
-                  Close Details
-               </button>
-            </div>
           </div>
         </div>
       )}
@@ -495,17 +487,9 @@ export default function AuditPage() {
                         </a>
                      </div>
                   )}
-               </div>
-            </div>
-
-            <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
-               <button 
-                  onClick={() => setSelectedLog(null)}
-                  className="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-all text-sm"
-               >
-                  Close
-               </button>
-            </div>
+                </div>
+             </div>
+ 
           </div>
         </div>
       )}
