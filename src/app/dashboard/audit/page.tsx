@@ -408,27 +408,6 @@ export default function AuditPage() {
                      </div>
                   </div>
 
-                  {/* Step 3: Receipt/Main TX */}
-                  <div className="relative flex items-center gap-4 group">
-                     <div className="relative z-10 w-10 h-10 rounded-full bg-white border-2 border-green-100 flex items-center justify-center shadow-sm group-hover:border-green-500 transition-colors">
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                     </div>
-                     <div className="flex-1 bg-gray-50 p-3 rounded-xl border border-gray-100 group-hover:border-green-200 transition-colors">
-                        <div className="flex justify-between items-center mb-1">
-                           <p className="text-xs font-bold text-gray-700">3. Final Receipt</p>
-                           <span className="text-[10px] font-mono text-gray-400">USDC Received</span>
-                        </div>
-                        <a 
-                           href={`https://hashscan.io/mainnet/transaction/${selectedLog.tx_id_receipt || selectedLog.tx_id}`}
-                           target="_blank"
-                           rel="noopener noreferrer" 
-                           className="text-[10px] text-green-600 hover:underline truncate block font-mono"
-                        >
-                           {selectedLog.tx_id_receipt || selectedLog.tx_id}
-                        </a>
-                     </div>
-                  </div>
-
                 </div>
               </div>
             </div>

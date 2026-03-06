@@ -338,6 +338,11 @@ Deno.serve(async (req) => {
         async start(controller) {
           let streamClosed = false;
 
+          // Handle client disconnect
+          req.signal.addEventListener("abort", () => {
+            streamClosed = true;
+          });
+
           const send = (msg: string) => {
             if (streamClosed) return;
             try {
