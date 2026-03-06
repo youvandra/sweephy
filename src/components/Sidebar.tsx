@@ -60,10 +60,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed top-0 right-0 h-full w-[300px] md:w-[400px] bg-[#081819] text-white z-50 flex flex-col p-8 shadow-2xl font-sans"
+            className="fixed top-0 right-0 h-full w-[300px] md:w-[400px] bg-[#081819] text-white z-50 flex flex-col p-8 shadow-2xl font-sans overflow-y-auto"
           >
             {/* Header: Logo & Close */}
-            <div className="flex items-center justify-between mb-16 flex-row-reverse">
+            <div className="flex items-center justify-between mb-16 flex-row-reverse flex-shrink-0">
               <Image 
                 src="/Logos/Logo_all-white.webp" 
                 alt="Sweephy" 
