@@ -129,6 +129,9 @@ export default function Home() {
           </video>
           <div className="absolute inset-0 bg-gradient-to-r from-[#00332c] via-transparent to-transparent lg:hidden" />
           <div className="absolute inset-0 bg-gradient-to-b from-[#00332c] via-transparent to-transparent lg:hidden" />
+          
+          {/* Text Contrast Overlay - Dark gradient at the bottom/right */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
         </div>
 
         {/* Navbar */}
