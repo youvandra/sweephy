@@ -87,11 +87,11 @@ export default function Home() {
     router.push('/buy');
   };
 
-  const handleSetupDevice = async () => {
+  const handleSetupDevice = () => {
     if (isConnected) {
       router.push('/dashboard');
     } else {
-      await open();
+      open({ view: 'Connect' });
     }
   };
 
