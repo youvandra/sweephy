@@ -10,11 +10,21 @@ import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/Button";
 import { Navbar } from "@/components/Navbar";
 import { motion, useScroll, useTransform, useSpring } from "framer-motion";
+import { Loader2 } from "lucide-react";
 
 export default function Home() {
   const { open } = useAppKit()
   const { isConnected, address } = useAppKitAccount()
   const router = useRouter()
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fallback to remove loader if video takes too long
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, []);
   
   // Scroll Animation for Marquee
   const marqueeRef = useRef(null);
@@ -86,8 +96,20 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen font-sans">
+    <div className="min-h-screen font-sans relative">
       
+      {/* Loading Overlay */}
+      <div 
+        className={`fixed inset-0 z-[100] flex items-center justify-center bg-[#001a17] transition-opacity duration-700 ${
+          isLoading ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      >
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <p className="text-sm font-medium text-gray-400 animate-pulse tracking-widest uppercase">Loading Experience</p>
+        </div>
+      </div>
+
       {/* Hero Section */}
       <div className="relative min-h-screen bg-gradient-to-br from-[#00332c] via-[#004d40] to-[#001a17] text-white overflow-hidden">
         {/* Background Glow Effect */}
@@ -100,6 +122,7 @@ export default function Home() {
             loop
             muted
             playsInline
+            onLoadedData={() => setIsLoading(false)}
             className="object-cover w-full h-full opacity-60 lg:opacity-100 mix-blend-lighten"
           >
             <source src="/landing/lp.mp4" type="video/mp4" />

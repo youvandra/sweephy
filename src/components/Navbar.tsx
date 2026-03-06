@@ -55,7 +55,8 @@ export function Navbar({ variant = 'dark' }: NavbarProps) {
             className="absolute right-6 md:right-12 2xl:right-24 top-1/2 -translate-y-1/2 p-2 rounded-full transition-transform hover:scale-110 active:scale-95 duration-200"
           >
             <Menu className={cn(
-              "w-8 h-8 md:w-10 md:h-10 transition-colors duration-300",
+              "transition-all duration-300",
+              isScrolled ? "w-6 h-6 md:w-8 md:h-8 2xl:w-10 2xl:h-10" : "w-8 h-8 md:w-10 md:h-10 2xl:w-14 2xl:h-14",
               isLightMode ? "text-[#081819]" : "text-white"
             )} />
           </button>
