@@ -27,7 +27,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const menuItems = [
     { label: "Home", href: "/" },
     { label: "Shop", href: "/buy" },
-    { label: "Tokenomics", href: "/tokenomics" },
+    { label: "$SWEEP", href: "/$SWEEP" },
     { label: "Apps", href: "/dashboard" }, // Using dashboard as Apps/Setup
     { label: "About", href: "/about" },
     { label: "Contact", href: "/contact" },
