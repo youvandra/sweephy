@@ -1,5 +1,21 @@
 import Link from "next/link";
 import Image from "next/image";
+import { Facebook, Instagram, Twitter, Github } from "lucide-react";
+
+// Custom TikTok Icon
+const TikTok = ({ className }: { className?: string }) => (
+  <svg 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+  </svg>
+);
 
 export function Footer() {
   return (
@@ -7,7 +23,7 @@ export function Footer() {
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col lg:flex-row justify-between gap-12 lg:gap-24">
           {/* Logo Section */}
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 space-y-6">
             <Link href="/" className="block">
               <Image 
                 src="/Logos/Logo_mark-green_text-white.png" 
@@ -18,6 +34,25 @@ export function Footer() {
                 priority
               />
             </Link>
+            
+            {/* Social Icons */}
+            <div className="flex gap-4">
+              <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2 -ml-2">
+                <Facebook className="w-5 h-5" />
+              </Link>
+              <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
+                <Instagram className="w-5 h-5" />
+              </Link>
+              <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
+                <Twitter className="w-5 h-5" />
+              </Link>
+              <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
+                <Github className="w-5 h-5" />
+              </Link>
+              <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
+                <TikTok className="w-5 h-5" />
+              </Link>
+            </div>
           </div>
 
           {/* Links Grid */}
@@ -56,8 +91,8 @@ export function Footer() {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/tokenomics" className="text-sm hover:text-primary transition-colors">
-                    Tokenomics
+                  <Link href="/$SWEEP" className="text-sm hover:text-primary transition-colors">
+                    $SWEEP
                   </Link>
                 </li>
                 <li>

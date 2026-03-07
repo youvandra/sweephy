@@ -183,17 +183,16 @@ export default function SweepPage() {
         </div>
       </section>
 
-      {/* Modern Roadmap - Deep Dark Background with Glow */}
-      <section className="relative z-10 py-32 px-6 2xl:px-24 bg-[#010e0d] overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[1000px] bg-primary/5 rounded-full blur-[150px] pointer-events-none" />
+      {/* Modern Roadmap - White Background */}
+      <section className="relative z-10 py-32 px-6 2xl:px-24 bg-white text-secondary-darkest overflow-hidden">
         
         <div className="max-w-5xl mx-auto relative z-10">
           <div className="text-center mb-24">
-            <h2 className="text-4xl md:text-6xl font-bold mb-6">The Roadmap</h2>
+            <h2 className="text-4xl md:text-6xl font-bold mb-6 text-secondary-darkest">The Roadmap</h2>
             <div className="w-24 h-1 bg-primary mx-auto rounded-full" />
           </div>
 
-          <div className="relative space-y-24 before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-white/20 before:to-transparent">
+          <div className="relative space-y-24 before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-secondary/20 before:to-transparent">
             {[
               { 
                 phase: "01", 
@@ -231,26 +230,26 @@ export default function SweepPage() {
                 }`}
               >
                 {/* Center Dot */}
-                <div className={`absolute left-0 md:left-1/2 w-10 h-10 rounded-full border-4 border-[#010e0d] flex items-center justify-center z-10 -translate-x-1/2 md:translate-x-[-50%] shadow-[0_0_20px_rgba(0,0,0,0.5)] ${
+                <div className={`absolute left-0 md:left-1/2 w-10 h-10 rounded-full border-4 border-white flex items-center justify-center z-10 -translate-x-1/2 md:translate-x-[-50%] shadow-[0_0_20px_rgba(0,0,0,0.1)] ${
                   milestone.status === "done" ? "bg-primary" : 
-                  milestone.status === "active" ? "bg-white animate-pulse" : "bg-[#1A2E2D]"
+                  milestone.status === "active" ? "bg-secondary-darkest animate-pulse" : "bg-gray-200"
                 }`}>
-                  {milestone.status === "done" && <div className="w-3 h-3 bg-[#010e0d] rounded-full" />}
+                  {milestone.status === "done" && <div className="w-3 h-3 bg-white rounded-full" />}
                 </div>
 
                 {/* Card */}
-                <div className="w-[calc(100%-60px)] md:w-[calc(50%-40px)] ml-auto md:mx-0 p-8 rounded-3xl bg-white/5 border border-white/5 hover:border-primary/30 transition-all hover:bg-white/10 backdrop-blur-sm group-hover:-translate-y-1 duration-300 shadow-xl">
+                <div className="w-[calc(100%-60px)] md:w-[calc(50%-40px)] ml-auto md:mx-0 p-8 rounded-3xl bg-secondary-light border border-secondary/5 hover:border-primary/30 transition-all hover:bg-white hover:shadow-xl backdrop-blur-sm group-hover:-translate-y-1 duration-300">
                   <div className="flex items-center justify-between mb-4">
-                    <span className="text-4xl font-bold text-white/10 font-mono">PHASE {milestone.phase}</span>
+                    <span className="text-4xl font-bold text-secondary/10 font-mono">PHASE {milestone.phase}</span>
                     {milestone.status === "active" && (
-                      <span className="px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-bold uppercase tracking-widest animate-pulse">Current</span>
+                      <span className="px-3 py-1 rounded-full bg-primary/20 text-primary-dark text-xs font-bold uppercase tracking-widest animate-pulse">Current</span>
                     )}
                   </div>
-                  <h3 className="text-2xl font-bold mb-6 text-white">{milestone.title}</h3>
+                  <h3 className="text-2xl font-bold mb-6 text-secondary-darkest">{milestone.title}</h3>
                   <ul className="space-y-3">
                     {milestone.items.map((item, idx) => (
-                      <li key={idx} className="flex items-center gap-3 text-gray-400 group-hover:text-gray-300 transition-colors">
-                        <div className={`w-1.5 h-1.5 rounded-full ${milestone.status === "done" ? "bg-primary" : "bg-white/30"}`} />
+                      <li key={idx} className="flex items-center gap-3 text-secondary/70 group-hover:text-secondary transition-colors">
+                        <div className={`w-1.5 h-1.5 rounded-full ${milestone.status === "done" ? "bg-primary" : "bg-secondary/20"}`} />
                         {item}
                       </li>
                     ))}

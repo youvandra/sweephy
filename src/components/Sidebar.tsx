@@ -11,6 +11,26 @@ interface SidebarProps {
   onClose: () => void;
 }
 
+interface MenuItem {
+  label: string;
+  href: string;
+  hasSub?: boolean;
+}
+
+const TikTok = ({ className }: { className?: string }) => (
+  <svg 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+  </svg>
+);
+
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Prevent body scroll when sidebar is open
   useEffect(() => {
@@ -24,17 +44,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     };
   }, [isOpen]);
 
-  const menuItems = [
+  const menuItems: MenuItem[] = [
     { label: "Home", href: "/" },
     { label: "Shop", href: "/buy" },
     { label: "$SWEEP", href: "/$SWEEP" },
     { label: "Apps", href: "/dashboard" }, // Using dashboard as Apps/Setup
     { label: "About", href: "/about" },
-    { label: "Contact", href: "/contact" },
-    { label: "FAQ", href: "/faq" },
   ];
 
   const footerLinks = [
+    { label: "Contact", href: "/contact" },
+    { label: "FAQ", href: "/faq" },
     { label: "Return Policy", href: "/return-policy" },
     { label: "Terms of Service", href: "/terms" },
   ];
@@ -94,37 +114,39 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               ))}
             </div>
 
-            {/* Divider */}
-            <div className="my-8 border-t border-white/10" />
-
             {/* Footer Links */}
-            <div className="space-y-4 text-right">
-              {footerLinks.map((link, index) => (
-                <Link
-                  key={index}
-                  href={link.href}
-                  onClick={onClose}
-                  className="block text-lg text-gray-400 hover:text-primary transition-colors"
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </div>
+            <div className="mt-auto pt-8 border-t border-white/10">
+              <div className="flex flex-col gap-2 text-right">
+                {footerLinks.map((link, index) => (
+                  <Link
+                    key={index}
+                    href={link.href}
+                    onClick={onClose}
+                    className="text-sm text-gray-400 hover:text-white transition-colors font-medium tracking-wide"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
 
-            {/* Social Icons */}
-            <div className="mt-auto flex justify-end gap-6 pt-8">
-              <Link href="#" className="text-gray-400 hover:text-primary transition-colors">
-                <Facebook className="w-6 h-6" />
-              </Link>
-              <Link href="#" className="text-gray-400 hover:text-primary transition-colors">
-                <Instagram className="w-6 h-6" />
-              </Link>
-              <Link href="#" className="text-gray-400 hover:text-primary transition-colors">
-                <Twitter className="w-6 h-6" />
-              </Link>
-              <Link href="#" className="text-gray-400 hover:text-primary transition-colors">
-                <Github className="w-6 h-6" />
-              </Link>
+              {/* Social Icons */}
+              <div className="flex justify-end gap-6 pt-6">
+                <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2 -mr-2">
+                  <Facebook className="w-5 h-5" />
+                </Link>
+                <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
+                  <Instagram className="w-5 h-5" />
+                </Link>
+                <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
+                  <Twitter className="w-5 h-5" />
+                </Link>
+                <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
+                  <Github className="w-5 h-5" />
+                </Link>
+                <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
+                  <TikTok className="w-5 h-5" />
+                </Link>
+              </div>
             </div>
           </motion.div>
         </>
