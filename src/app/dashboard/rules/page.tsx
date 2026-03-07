@@ -405,33 +405,77 @@ export default function RulesPage() {
 
   const RulesSkeleton = () => (
     <div className="max-w-5xl mx-auto space-y-10 pb-20 animate-pulse">
+      {/* Header Skeleton */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="h-8 w-48 bg-gray-200 rounded-lg mb-2" />
-          <div className="h-4 w-64 bg-gray-100 rounded-lg" />
+        <div className="space-y-2">
+          <div className="h-9 w-48 bg-gray-200 rounded-lg" />
+          <div className="h-5 w-80 bg-gray-100 rounded-lg" />
         </div>
-        <div className="h-12 w-48 bg-gray-200 rounded-xl" />
       </div>
+
       <div className="grid lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
-          <div className="bg-white p-8 rounded-[32px] border border-gray-100">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="h-12 w-12 bg-gray-200 rounded-xl" />
+        {/* Left Column Skeleton (Allowance) */}
+        <div className="space-y-8">
+          {/* Allowance Card Skeleton */}
+          <div className="bg-secondary p-8 rounded-[32px] h-[420px] relative overflow-hidden border border-white/5">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-white/10 rounded-xl" />
               <div className="space-y-2">
-                <div className="h-6 w-40 bg-gray-200 rounded-lg" />
-                <div className="h-4 w-32 bg-gray-100 rounded-lg" />
+                <div className="h-6 w-32 bg-white/10 rounded-lg" />
+                <div className="h-4 w-40 bg-white/5 rounded-lg" />
               </div>
             </div>
-            <div className="grid sm:grid-cols-2 gap-6">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className={`h-40 bg-gray-50 rounded-2xl border border-gray-100 ${i === 5 ? "sm:col-span-2" : ""}`} />
-              ))}
+            <div className="space-y-3 mb-8">
+              <div className="h-4 w-full bg-white/5 rounded-lg" />
+              <div className="h-4 w-3/4 bg-white/5 rounded-lg" />
+            </div>
+            <div className="space-y-4">
+              <div className="h-16 w-full bg-white/5 rounded-2xl border border-white/10" />
+              <div className="h-14 w-full bg-primary/20 rounded-xl" />
             </div>
           </div>
+
+          {/* Info Card Skeleton */}
+          <div className="p-6 rounded-2xl bg-white border border-secondary/5 space-y-3">
+            <div className="h-5 w-32 bg-gray-200 rounded-lg" />
+            <div className="h-4 w-full bg-gray-100 rounded-lg" />
+            <div className="h-4 w-2/3 bg-gray-100 rounded-lg" />
+          </div>
         </div>
-        <div className="space-y-8">
-          <div className="bg-gray-100 h-[500px] rounded-[32px]" />
-          <div className="h-32 bg-white rounded-2xl border border-gray-100" />
+
+        {/* Right Column Skeleton (Swap Parameters) */}
+        <div className="lg:col-span-2 space-y-8">
+          <div className="bg-white p-8 rounded-[32px] border border-secondary/5 shadow-sm">
+            {/* Card Header */}
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-12 h-12 bg-primary/10 rounded-xl" />
+              <div className="space-y-2">
+                <div className="h-6 w-48 bg-gray-200 rounded-lg" />
+                <div className="h-4 w-64 bg-gray-100 rounded-lg" />
+              </div>
+            </div>
+
+            {/* Input Grid */}
+            <div className="grid sm:grid-cols-2 gap-6 mb-8">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className={`bg-white p-5 rounded-2xl border border-gray-100 space-y-3 ${i === 5 ? "sm:col-span-2" : ""}`}>
+                  <div className="flex justify-between items-center">
+                    <div className="h-5 w-32 bg-gray-100 rounded-md" />
+                    <div className="h-5 w-12 bg-gray-100 rounded-md" />
+                  </div>
+                  <div className="h-12 w-full bg-gray-50 rounded-xl" />
+                  <div className="flex gap-2">
+                    <div className="h-6 w-12 bg-gray-100 rounded-md" />
+                    <div className="h-6 w-12 bg-gray-100 rounded-md" />
+                    <div className="h-6 w-12 bg-gray-100 rounded-md" />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Save Button */}
+            <div className="h-14 w-full bg-secondary/10 rounded-xl" />
+          </div>
         </div>
       </div>
     </div>
