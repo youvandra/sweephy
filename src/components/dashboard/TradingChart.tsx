@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { 
   AreaChart, 
@@ -15,7 +15,8 @@ import {
 } from "recharts";
 import { Intent } from "@/lib/api/dashboard";
 import { format } from "date-fns";
-import { Loader2, TrendingUp, TrendingDown } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, X, ExternalLink } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 
 interface TradingChartProps {
   intents: Intent[];
@@ -35,6 +36,7 @@ export function TradingChart({ intents }: TradingChartProps) {
   const [currentPrice, setCurrentPrice] = useState<number>(0);
   const [priceChange, setPriceChange] = useState<number>(0);
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('1W');
+  const [selectedPoint, setSelectedPoint] = useState<{ dateStr: string; amount: number; intents: Intent[] } | null>(null);
 
   useEffect(() => {
     async function fetchPriceData() {
@@ -101,16 +103,16 @@ export function TradingChart({ intents }: TradingChartProps) {
 
   // Pre-calculate aggregated intents per chart data point
   const aggregatedIntents = useMemo(() => {
-    if (data.length === 0) return new Map<string, number>();
+    if (data.length === 0) return new Map<string, { amount: number, intents: Intent[] }>();
     
-    const intentMap = new Map<string, number>();
+    const intentMap = new Map<string, { amount: number, intents: Intent[] }>();
     const startTime = data[0].time;
     const endTime = data[data.length - 1].time;
 
     intents.filter(intent => {
       // Ensure date parsing works correctly for ISO strings or timestamps
       const intentTime = new Date(intent.created_at).getTime();
-      return intentTime >= startTime && intentTime <= endTime && intent.action === "swap";
+      return intentTime >= startTime && intentTime <= endTime && intent.action === "swap" && intent.status === "completed";
     }).forEach(intent => {
       const intentTime = new Date(intent.created_at).getTime();
       // Find closest data point
@@ -118,8 +120,11 @@ export function TradingChart({ intents }: TradingChartProps) {
         Math.abs(curr.time - intentTime) < Math.abs(prev.time - intentTime) ? curr : prev
       );
       
-      const currentAmount = intentMap.get(closestPoint.dateStr) || 0;
-      intentMap.set(closestPoint.dateStr, currentAmount + intent.amount);
+      const current = intentMap.get(closestPoint.dateStr) || { amount: 0, intents: [] };
+      intentMap.set(closestPoint.dateStr, {
+        amount: current.amount + 1, // Count transactions instead of summing amounts
+        intents: [...current.intents, intent]
+      });
     });
 
     return intentMap;
@@ -131,30 +136,38 @@ export function TradingChart({ intents }: TradingChartProps) {
     // Only render if we have valid coordinates and payload
     if (!cx || !cy || !payload || !payload.dateStr) return null;
 
-    // Check if we have aggregated amount for this point
-    const totalAmount = aggregatedIntents.get(payload.dateStr);
+    // Check if we have aggregated data for this point
+    const aggregatedData = aggregatedIntents.get(payload.dateStr);
     
     // If no transaction here, return standard empty dot or null (to show just the line)
-    if (!totalAmount || totalAmount === 0) return <circle cx={cx} cy={cy} r={0} />;
+    if (!aggregatedData || aggregatedData.amount === 0) return <circle cx={cx} cy={cy} r={0} />;
 
     return (
       <svg x={cx - 14} y={cy - 14} width={28} height={28} viewBox="0 0 28 28" style={{ overflow: 'visible' }}>
-        <Link href="/dashboard/audit">
-          <g className="cursor-pointer hover:opacity-80 transition-opacity">
-            <circle cx={14} cy={14} r={14} fill="#00DF81" stroke="#fff" strokeWidth={2} />
-            <text 
-              x={14} 
-              y={19} 
-              textAnchor="middle" 
-              fill="#021B1A" 
-              fontSize={10} 
-              fontWeight="bold"
-              style={{ pointerEvents: 'none', userSelect: 'none' }}
-            >
-              {Math.round(totalAmount) > 99 ? '99+' : Math.round(totalAmount)}
-            </text>
-          </g>
-        </Link>
+        <g 
+          className="cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedPoint({
+              dateStr: payload.dateStr,
+              amount: aggregatedData.amount,
+              intents: aggregatedData.intents
+            });
+          }}
+        >
+          <circle cx={14} cy={14} r={14} fill="#00DF81" stroke="#fff" strokeWidth={2} />
+          <text 
+            x={14} 
+            y={19} 
+            textAnchor="middle" 
+            fill="#021B1A" 
+            fontSize={10} 
+            fontWeight="bold"
+            style={{ pointerEvents: 'none', userSelect: 'none' }}
+          >
+            {Math.round(aggregatedData.amount) > 99 ? '99+' : Math.round(aggregatedData.amount)}
+          </text>
+        </g>
       </svg>
     );
   };
@@ -174,7 +187,61 @@ export function TradingChart({ intents }: TradingChartProps) {
   };
 
   return (
-    <div className="h-[500px] w-full bg-white rounded-[32px] border border-gray-100 p-8 shadow-sm overflow-hidden flex flex-col">
+    <div className="h-[500px] w-full bg-white rounded-[32px] border border-gray-100 p-8 shadow-sm overflow-hidden flex flex-col relative">
+      <AnimatePresence>
+        {selectedPoint && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            className="absolute z-50 top-20 left-1/2 -translate-x-1/2 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden"
+          >
+            <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-secondary text-sm">Transaction Details</h4>
+                <p className="text-[10px] text-gray-400 font-medium">{selectedPoint.dateStr}</p>
+              </div>
+              <button 
+                onClick={() => setSelectedPoint(null)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-4 max-h-60 overflow-y-auto space-y-3 custom-scrollbar">
+              {selectedPoint.intents.map((intent) => (
+                <div key={intent.id} className="flex flex-col gap-2 p-3 rounded-xl bg-gray-50/50 border border-gray-100 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Timestamp</span>
+                    <span className="text-xs font-bold text-secondary">{new Date(intent.created_at).toLocaleTimeString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Amount</span>
+                    <span className="text-xs font-bold text-secondary">{intent.amount} HBAR</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Amount Receive</span>
+                    <span className="text-xs font-bold text-secondary">{intent.amount} USDC</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Device</span>
+                    <span className="text-xs font-bold text-secondary">{intent.devices?.name}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="p-3 border-t border-gray-100 bg-gray-50/50">
+              <Link href="/dashboard/audit" className="flex items-center justify-center gap-2 w-full py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-600 hover:text-secondary hover:border-gray-300 transition-colors shadow-sm">
+                View Full Logs
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="flex items-center justify-between mb-8">
         <div>
           <div className="flex items-center gap-3">
