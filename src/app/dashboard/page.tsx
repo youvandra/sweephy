@@ -12,8 +12,8 @@ import { useAppKitAccount } from "@reown/appkit/react";
 import { useProfile } from "@/hooks/useProfile";
 import { fetchDashboardStats, fetchRecentIntents, DashboardStats, Intent } from "@/lib/api/dashboard";
 import { StatCard } from "@/components/dashboard/StatCard";
+import { TradingChart } from "@/components/dashboard/TradingChart";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
-import { SecurityCenter } from "@/components/dashboard/SecurityCenter";
 
 export default function Dashboard() {
   const { address } = useAppKitAccount();
@@ -129,14 +129,14 @@ export default function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Recent Activity */}
-        <div className="lg:col-span-2 space-y-6">
-          <RecentActivity intents={recentIntents} />
+        {/* Trading Chart */}
+        <div className="lg:col-span-3 space-y-6">
+          <TradingChart intents={recentIntents} />
         </div>
-
-        {/* System Status & Security */}
-        <div className="space-y-6">
-          <SecurityCenter />
+        
+        {/* Recent Activity - Full Width */}
+        <div className="lg:col-span-3 space-y-6">
+          <RecentActivity intents={recentIntents} />
         </div>
       </div>
     </div>

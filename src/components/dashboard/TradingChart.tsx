@@ -1,0 +1,284 @@
+"use client";
+
+import { useEffect, useState, useMemo } from "react";
+import Link from "next/link";
+import { 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  ReferenceDot,
+  Brush
+} from "recharts";
+import { Intent } from "@/lib/api/dashboard";
+import { format } from "date-fns";
+import { Loader2, TrendingUp, TrendingDown } from "lucide-react";
+
+interface TradingChartProps {
+  intents: Intent[];
+}
+
+interface PriceData {
+  time: number;
+  price: number;
+  dateStr: string;
+}
+
+type TimeFrame = '1D' | '1W' | '1M' | '1Y';
+
+export function TradingChart({ intents }: TradingChartProps) {
+  const [data, setData] = useState<PriceData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentPrice, setCurrentPrice] = useState<number>(0);
+  const [priceChange, setPriceChange] = useState<number>(0);
+  const [timeFrame, setTimeFrame] = useState<TimeFrame>('1W');
+
+  useEffect(() => {
+    async function fetchPriceData() {
+      setLoading(true);
+      try {
+        let interval = '1h';
+        let limit = '168'; // Default 7 days (1W)
+
+        switch (timeFrame) {
+          case '1D':
+            interval = '15m';
+            limit = '96';
+            break;
+          case '1W':
+            interval = '1h';
+            limit = '168';
+            break;
+          case '1M':
+            interval = '4h';
+            limit = '180';
+            break;
+          case '1Y':
+            interval = '1d';
+            limit = '365';
+            break;
+        }
+
+        const response = await fetch(`/api/price-history?interval=${interval}&limit=${limit}`);
+        
+        if (!response.ok) {
+          throw new Error("Failed to fetch price data");
+        }
+        
+        const klines = await response.json();
+        
+        // Handle potential error from API route
+        if (klines.error) {
+          throw new Error(klines.error);
+        }
+
+        const formattedData = klines.map((k: any) => ({
+          time: k[0],
+          price: parseFloat(k[4]),
+          dateStr: format(new Date(k[0]), timeFrame === '1D' ? "HH:mm" : "MMM dd"),
+        }));
+
+        setData(formattedData);
+        
+        if (formattedData.length > 0) {
+          const lastPrice = formattedData[formattedData.length - 1].price;
+          const firstPrice = formattedData[0].price;
+          setCurrentPrice(lastPrice);
+          setPriceChange(((lastPrice - firstPrice) / firstPrice) * 100);
+        }
+      } catch (error) {
+        console.error("Failed to fetch price data", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchPriceData();
+  }, [timeFrame]);
+
+  // Pre-calculate aggregated intents per chart data point
+  const aggregatedIntents = useMemo(() => {
+    if (data.length === 0) return new Map<string, number>();
+    
+    const intentMap = new Map<string, number>();
+    const startTime = data[0].time;
+    const endTime = data[data.length - 1].time;
+
+    intents.filter(intent => {
+      // Ensure date parsing works correctly for ISO strings or timestamps
+      const intentTime = new Date(intent.created_at).getTime();
+      return intentTime >= startTime && intentTime <= endTime && intent.action === "swap";
+    }).forEach(intent => {
+      const intentTime = new Date(intent.created_at).getTime();
+      // Find closest data point
+      const closestPoint = data.reduce((prev, curr) => 
+        Math.abs(curr.time - intentTime) < Math.abs(prev.time - intentTime) ? curr : prev
+      );
+      
+      const currentAmount = intentMap.get(closestPoint.dateStr) || 0;
+      intentMap.set(closestPoint.dateStr, currentAmount + intent.amount);
+    });
+
+    return intentMap;
+  }, [data, intents]);
+
+  const CustomDot = (props: any) => {
+    const { cx, cy, payload } = props;
+    
+    // Only render if we have valid coordinates and payload
+    if (!cx || !cy || !payload || !payload.dateStr) return null;
+
+    // Check if we have aggregated amount for this point
+    const totalAmount = aggregatedIntents.get(payload.dateStr);
+    
+    // If no transaction here, return standard empty dot or null (to show just the line)
+    if (!totalAmount || totalAmount === 0) return <circle cx={cx} cy={cy} r={0} />;
+
+    return (
+      <svg x={cx - 14} y={cy - 14} width={28} height={28} viewBox="0 0 28 28" style={{ overflow: 'visible' }}>
+        <Link href="/dashboard/audit">
+          <g className="cursor-pointer hover:opacity-80 transition-opacity">
+            <circle cx={14} cy={14} r={14} fill="#00DF81" stroke="#fff" strokeWidth={2} />
+            <text 
+              x={14} 
+              y={19} 
+              textAnchor="middle" 
+              fill="#021B1A" 
+              fontSize={10} 
+              fontWeight="bold"
+              style={{ pointerEvents: 'none', userSelect: 'none' }}
+            >
+              {Math.round(totalAmount) > 99 ? '99+' : Math.round(totalAmount)}
+            </text>
+          </g>
+        </Link>
+      </svg>
+    );
+  };
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-[#021B1A] border border-white/10 p-3 rounded-xl shadow-xl">
+          <p className="text-gray-400 text-xs mb-1">{label}</p>
+          <p className="text-white font-bold text-sm">
+            ${payload[0].value.toFixed(4)}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div className="h-[500px] w-full bg-white rounded-[32px] border border-gray-100 p-8 shadow-sm overflow-hidden flex flex-col">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <div className="flex items-center gap-3">
+            <h3 className="text-xl font-bold text-secondary">HBAR / USDC</h3>
+            <div className="flex bg-gray-50 rounded-lg p-1">
+              {(['1D', '1W', '1M', '1Y'] as TimeFrame[]).map((tf) => (
+                <button
+                  key={tf}
+                  onClick={() => setTimeFrame(tf)}
+                  className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
+                    timeFrame === tf 
+                      ? "bg-white text-secondary shadow-sm" 
+                      : "text-gray-400 hover:text-secondary"
+                  }`}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-1">
+            <h2 className="text-3xl font-bold text-secondary">
+              ${currentPrice.toFixed(4)}
+            </h2>
+            <div className={`flex items-center gap-1 text-sm font-bold ${priceChange >= 0 ? "text-green-500" : "text-red-500"}`}>
+              {priceChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+              {Math.abs(priceChange).toFixed(2)}%
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex gap-2">
+           <div className="flex items-center gap-2 text-xs font-bold text-gray-400">
+              <div className="w-2 h-2 rounded-full bg-primary" />
+              Your Buys
+           </div>
+        </div>
+      </div>
+
+      <div className="flex-1 w-full min-h-0">
+        {loading ? (
+          <div className="h-full flex items-center justify-center text-gray-400">
+            <Loader2 className="w-8 h-8 animate-spin" />
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data}>
+              <defs>
+                <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#00DF81" stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor="#00DF81" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+              <XAxis 
+                dataKey="dateStr" 
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: '#9ca3af', fontSize: 10 }}
+                minTickGap={50}
+              />
+              <YAxis 
+                domain={['auto', 'auto']}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: '#9ca3af', fontSize: 10 }}
+                tickFormatter={(val) => `$${val.toFixed(4)}`}
+                orientation="right"
+                width={60}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <ReferenceDot 
+                x={data.length > 0 ? data[0].dateStr : 0} // Use a valid X value to satisfy Recharts, but shape overrides
+                y={data.length > 0 ? data[0].price : 0}
+                ifOverflow="extendDomain"
+                shape={(props: any) => {
+                  // Recharts passes props for the single point we defined above
+                  // We need to iterate over ALL points to render dots where needed
+                  // OR use a different approach: Customized Dot in Area
+                  return null; 
+                }} 
+              />
+              {/* Use Customized Dot on Area instead for proper per-point rendering */}
+              <Area 
+                type="monotone" 
+                dataKey="price" 
+                stroke="#00DF81" 
+                strokeWidth={2}
+                fillOpacity={1} 
+                fill="url(#colorPrice)" 
+                activeDot={{ r: 6, fill: "#00DF81", stroke: "#fff", strokeWidth: 2 }}
+                dot={(props: any) => <CustomDot {...props} />}
+              />
+              <Brush 
+                dataKey="dateStr" 
+                height={30} 
+                stroke="#00DF81"
+                fill="#f8fafc"
+                tickFormatter={() => ""}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  );
+}

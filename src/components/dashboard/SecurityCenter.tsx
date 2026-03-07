@@ -1,8 +1,14 @@
-import { Shield, ShieldCheck, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Shield, ShieldCheck, AlertCircle, CheckCircle2, History, ArrowRight } from "lucide-react";
+import Link from "next/link";
+import { Intent } from "@/lib/api/dashboard";
 
-export function SecurityCenter() {
+interface SecurityCenterProps {
+  intents?: Intent[];
+}
+
+export function SecurityCenter({ intents = [] }: SecurityCenterProps) {
   return (
-    <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-8 space-y-8 h-full">
+    <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-8 space-y-8 h-full flex flex-col">
       <h3 className="text-xl font-bold text-secondary flex items-center gap-3">
         <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-gray-500">
           <Shield className="w-5 h-5" />
@@ -53,6 +59,45 @@ export function SecurityCenter() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Recent Activity Section within Security Center */}
+      <div className="pt-6 border-t border-gray-50 space-y-4 flex-1">
+        <div className="flex items-center justify-between">
+          <h4 className="font-bold text-sm text-secondary flex items-center gap-2">
+            <History className="w-4 h-4 text-gray-400" />
+            Recent Activity
+          </h4>
+          <Link href="/dashboard/audit" className="text-[10px] font-bold text-gray-400 hover:text-secondary transition-colors flex items-center gap-1 group">
+            View All
+            <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+          </Link>
+        </div>
+
+        <div className="space-y-3">
+          {intents.slice(0, 3).map((intent) => (
+            <div key={intent.id} className="p-3 rounded-xl bg-gray-50/50 border border-transparent hover:border-gray-100 transition-all">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-secondary">{intent.pair}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    {intent.action} • {new Date(intent.created_at).toLocaleTimeString()}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                    intent.status === "completed" ? "bg-green-50 text-green-600" : "bg-amber-50 text-amber-600"
+                  }`}>
+                    {intent.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+          {intents.length === 0 && (
+            <p className="text-xs text-gray-400 text-center py-4">No recent activity</p>
+          )}
+        </div>
       </div>
 
       <div className="pt-6 border-t border-gray-50 mt-auto">
