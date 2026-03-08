@@ -54,7 +54,7 @@ export default function Dashboard() {
     try {
       const [newStats, newRecent] = await Promise.all([
         fetchDashboardStats(userId),
-        fetchRecentIntents(userId)
+        fetchRecentIntents(userId, 100) // Fetch more for chart history
       ]);
       setStats(newStats);
       setRecentIntents(newRecent);
@@ -136,7 +136,7 @@ export default function Dashboard() {
         
         {/* Recent Activity - Full Width */}
         <div className="lg:col-span-3 space-y-6">
-          <RecentActivity intents={recentIntents} />
+          <RecentActivity intents={recentIntents.slice(0, 5)} />
         </div>
       </div>
     </div>

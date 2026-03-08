@@ -30,13 +30,17 @@ interface PriceData {
 
 type TimeFrame = '1D' | '1W' | '1M' | '1Y';
 
+interface EnrichedIntent extends Intent {
+  executionPrice: number;
+}
+
 export function TradingChart({ intents }: TradingChartProps) {
   const [data, setData] = useState<PriceData[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPrice, setCurrentPrice] = useState<number>(0);
   const [priceChange, setPriceChange] = useState<number>(0);
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('1W');
-  const [selectedPoint, setSelectedPoint] = useState<{ dateStr: string; amount: number; intents: Intent[] } | null>(null);
+  const [selectedPoint, setSelectedPoint] = useState<{ dateStr: string; amount: number; intents: EnrichedIntent[] } | null>(null);
 
   useEffect(() => {
     async function fetchPriceData() {
@@ -103,9 +107,9 @@ export function TradingChart({ intents }: TradingChartProps) {
 
   // Pre-calculate aggregated intents per chart data point
   const aggregatedIntents = useMemo(() => {
-    if (data.length === 0) return new Map<string, { amount: number, intents: Intent[] }>();
+    if (data.length === 0) return new Map<string, { amount: number, intents: EnrichedIntent[] }>();
     
-    const intentMap = new Map<string, { amount: number, intents: Intent[] }>();
+    const intentMap = new Map<string, { amount: number, intents: EnrichedIntent[] }>();
     const startTime = data[0].time;
     const endTime = data[data.length - 1].time;
 
@@ -120,10 +124,12 @@ export function TradingChart({ intents }: TradingChartProps) {
         Math.abs(curr.time - intentTime) < Math.abs(prev.time - intentTime) ? curr : prev
       );
       
+      const enrichedIntent: EnrichedIntent = { ...intent, executionPrice: closestPoint.price };
       const current = intentMap.get(closestPoint.dateStr) || { amount: 0, intents: [] };
+      
       intentMap.set(closestPoint.dateStr, {
         amount: current.amount + 1, // Count transactions instead of summing amounts
-        intents: [...current.intents, intent]
+        intents: [...current.intents, enrichedIntent]
       });
     });
 
@@ -218,11 +224,11 @@ export function TradingChart({ intents }: TradingChartProps) {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Amount</span>
-                    <span className="text-xs font-bold text-secondary">{intent.amount} HBAR</span>
+                    <span className="text-xs font-bold text-secondary">{Number(intent.amount).toLocaleString()} HBAR</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Amount Receive</span>
-                    <span className="text-xs font-bold text-secondary">{intent.amount} USDC</span>
+                    <span className="text-xs font-bold text-secondary">~{(Number(intent.amount) * intent.executionPrice).toFixed(2)} USDC</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Device</span>
@@ -313,17 +319,6 @@ export function TradingChart({ intents }: TradingChartProps) {
                 width={60}
               />
               <Tooltip content={<CustomTooltip />} />
-              <ReferenceDot 
-                x={data.length > 0 ? data[0].dateStr : 0} // Use a valid X value to satisfy Recharts, but shape overrides
-                y={data.length > 0 ? data[0].price : 0}
-                ifOverflow="extendDomain"
-                shape={(props: any) => {
-                  // Recharts passes props for the single point we defined above
-                  // We need to iterate over ALL points to render dots where needed
-                  // OR use a different approach: Customized Dot in Area
-                  return null; 
-                }} 
-              />
               {/* Use Customized Dot on Area instead for proper per-point rendering */}
               <Area 
                 type="monotone" 

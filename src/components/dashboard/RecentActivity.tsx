@@ -63,7 +63,7 @@ export function RecentActivity({ intents }: { intents: Intent[] }) {
                   </div>
                 </div>
                 <div className="text-right flex flex-col items-end gap-1">
-                  <p className="text-sm font-bold text-secondary">{intent.amount} <span className="text-[10px] text-gray-400">HBAR</span></p>
+                  <p className="text-sm font-bold text-secondary">{Number(intent.amount).toLocaleString()} <span className="text-[10px] text-gray-400">HBAR</span></p>
                 </div>
               </div>
             </div>
