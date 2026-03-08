@@ -110,7 +110,7 @@ export default function RulesPage() {
     hbar_allowance_amount: 0,
   });
 
-  const PLATFORM_SPENDER_ID = process.env.NEXT_PUBLIC_SWEEPHY_CONTRACT_ID || process.env.NEXT_PUBLIC_PLATFORM_SPENDER_ID || "0.0.10304901";
+  const PLATFORM_SPENDER_ID = process.env.NEXT_PUBLIC_SWEEPHY_CONTRACT_ID || "0.0.10354696";
 
   // UI loading states
   const [loading, setLoading] = useState(false);

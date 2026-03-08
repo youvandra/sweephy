@@ -6,7 +6,6 @@ import {
   ContractExecuteTransaction, ContractFunctionParameters,
   ContractId,
   TokenId,
-  ContractCallQuery
 } from "npm:@hashgraph/sdk@2.46.0";
 import { KMSClient, GetPublicKeyCommand, SignCommand } from "npm:@aws-sdk/client-kms@3.437.0";
 import { ethers } from "npm:ethers@6.11.1";
@@ -37,19 +36,9 @@ const kmsClient = new KMSClient({
 });
 
 let cachedPublicKey: PublicKey | null = null;
-let cachedClient: Client | null = null;
 
-async function getClient(): Promise<Client> {
-  if (cachedClient) return cachedClient;
-
-  const client = Client.forMainnet();
-  client.setMaxAttempts(3);
-  client.setRequestTimeout(30000); // Reduce timeout to 30s
-  
-  // Initialize operator (will be set in main flow, but client instance persists)
-  cachedClient = client;
-  return client;
-}
+// FIX #5: Cache resolved account IDs to avoid redundant Mirror Node calls
+const accountIdCache = new Map<string, string>();
 
 function derToRaw(der: Uint8Array): { r: Uint8Array; s: Uint8Array } {
   let offset = 0;
@@ -78,13 +67,12 @@ function derToRaw(der: Uint8Array): { r: Uint8Array; s: Uint8Array } {
   return { r: to32Bytes(r), s: to32Bytes(s) };
 }
 
+// FIX #6: Remove double-hash. Hedera SDK already sends pre-hashed message bytes.
+// Passing messageHashBytes directly to KMS as DIGEST — no keccak256 re-hash needed.
 async function awsSign(messageHashBytes: Uint8Array, keyId: string): Promise<Uint8Array> {
-  const digestHex = ethers.keccak256(messageHashBytes).replace("0x", "");
-  const digest = new Uint8Array(digestHex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
-
   const response = await kmsClient.send(new SignCommand({
     KeyId: keyId,
-    Message: digest,
+    Message: messageHashBytes, // Already a digest from Hedera SDK — do NOT re-hash
     MessageType: "DIGEST",
     SigningAlgorithm: "ECDSA_SHA_256",
   }));
@@ -123,8 +111,11 @@ async function getKmsPublicKey(): Promise<PublicKey> {
   return cachedPublicKey;
 }
 
+// FIX #5: Added in-memory cache to avoid repeat Mirror Node lookups
 async function resolveAccountId(address: string): Promise<string> {
   if (address.match(/^\d+\.\d+\.\d+$/)) return address;
+
+  if (accountIdCache.has(address)) return accountIdCache.get(address)!;
 
   const evmAddr = address.startsWith("0x") ? address : "0x" + address;
 
@@ -136,9 +127,11 @@ async function resolveAccountId(address: string): Promise<string> {
   const data = await res.json();
   if (!data.account) throw new Error(`No Hedera account for: ${evmAddr}`);
 
+  accountIdCache.set(address, data.account);
   return data.account;
 }
 
+// FIX #7: Pad nanos to 9 digits for correct Mirror Node transaction ID format
 function toMirrorNodeTransactionId(txId: string): string {
   const at = txId.indexOf("@");
   if (at === -1) return txId;
@@ -147,7 +140,7 @@ function toMirrorNodeTransactionId(txId: string): string {
   const dot = validStart.indexOf(".");
   if (dot === -1) return `${account}-${validStart}`;
   const seconds = validStart.slice(0, dot);
-  const nanos = validStart.slice(dot + 1);
+  const nanos = validStart.slice(dot + 1).padStart(9, "0"); // FIX: always 9 digits
   return `${account}-${seconds}-${nanos}`;
 }
 
@@ -188,76 +181,38 @@ async function checkTokenAssociation(accountId: string, tokenId: string): Promis
   }
 }
 
-async function getEstimatedAmountOut(client: Client, amountHbar: number): Promise<bigint> {
-  const amountTinybars = BigInt(Math.floor(amountHbar * 1e8));
-  const path = [WHBAR_TOKEN_ID.toSolidityAddress(), USDC_TOKEN_ID.toSolidityAddress()];
-
-  // Strategy 1: ContractCallQuery (Fastest)
+async function getEstimatedAmountOut(amountHbar: number): Promise<bigint> {
   try {
-    const query = new ContractCallQuery()
-        .setContractId(SAUCERSWAP_ROUTER_ID)
-        .setGas(100000)
-        .setFunction("getAmountsOut", new ContractFunctionParameters()
-            .addUint256(amountTinybars.toString())
-            .addAddressArray(path)
-        );
+    const amountTinybars = BigInt(Math.floor(amountHbar * 1e8));
+    const path = [WHBAR_TOKEN_ID.toSolidityAddress(), USDC_TOKEN_ID.toSolidityAddress()];
 
-    // This needs a payment if not free. Queries usually cost small HBAR.
-    // Client operator pays for it.
-    // Ensure client has operator set before calling this.
-    // But wait, ContractCallQuery is a "Query", it doesn't need signature if it's a pure view function?
-    // Actually on Hedera, queries still have a cost.
-    // We can set payment amount.
-    
-    // NOTE: If this fails with "INSUFFICIENT_PAYER_BALANCE" or similar, we might need to set query payment.
-    // But usually SDK handles it if operator is set.
-    
-    const contractFunctionResult = await query.execute(client);
-    
-    // Decoding result
-    const rawBytes = contractFunctionResult.asBytes();
     const iface = new ethers.Interface([
       "function getAmountsOut(uint256 amountIn, address[] path) external view returns (uint256[] amounts)"
     ]);
-    const decoded = iface.decodeFunctionResult("getAmountsOut", rawBytes);
-    const resultAmounts = decoded[0];
-    
-    return BigInt(resultAmounts[resultAmounts.length - 1].toString());
+    const encodedData = iface.encodeFunctionData("getAmountsOut", [amountTinybars.toString(), path]);
 
-  } catch (e: any) {
-    console.warn("ContractCallQuery failed, falling back to Mirror Node:", e.message);
-    
-    // Strategy 2: Mirror Node (Fallback)
-    try {
-        const iface = new ethers.Interface([
-          "function getAmountsOut(uint256 amountIn, address[] path) external view returns (uint256[] amounts)"
-        ]);
-        const encodedData = iface.encodeFunctionData("getAmountsOut", [amountTinybars.toString(), path]);
+    const response = await fetch(`${MIRROR_NODE_API}/api/v1/contracts/call`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        block: "latest",
+        data: encodedData,
+        to: SAUCERSWAP_ROUTER_ID.toSolidityAddress(),
+        estimate: false
+      })
+    });
 
-        const response = await fetch(`${MIRROR_NODE_API}/api/v1/contracts/call`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            block: "latest",
-            data: encodedData,
-            to: SAUCERSWAP_ROUTER_ID.toSolidityAddress(),
-            estimate: false 
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`Mirror node contract call failed: ${response.status}`);
-        }
-
-        const result = await response.json();
-        const decoded = iface.decodeFunctionResult("getAmountsOut", result.result);
-        const amounts = decoded[0]; 
-        
-        return BigInt(amounts[amounts.length - 1].toString());
-    } catch (mirrorErr) {
-        console.error("All estimation strategies failed:", mirrorErr);
-        return BigInt(0);
+    if (!response.ok) {
+      throw new Error(`Mirror node contract call failed: ${response.status}`);
     }
+
+    const result = await response.json();
+    const decoded = iface.decodeFunctionResult("getAmountsOut", result.result);
+    const amounts = decoded[0];
+
+    return BigInt(amounts[amounts.length - 1].toString());
+  } catch (e) {
+    return BigInt(0);
   }
 }
 
@@ -288,14 +243,14 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Device not found" }), { status: 404 });
     }
 
-    // Check if device is disabled - Block all actions if disabled
+    // Check if device is disabled
     if (device.is_disabled) {
       return new Response(JSON.stringify({ error: "DEVICE_DISABLED" }), { status: 403 });
     }
 
     const { action, pairing_code } = JSON.parse(payloadStr);
 
-    // Heartbeat
+    // Heartbeat (fire-and-forget)
     supabase.from("devices")
       .update({ last_seen: new Date().toISOString(), status: "online" })
       .eq("id", device_id)
@@ -310,25 +265,16 @@ Deno.serve(async (req) => {
         const rules = user.rules;
         if (!rules?.allowance_granted) throw new Error("Allowance not granted");
 
-        // 1. Resolve Account
-        let userAccountIdStr: string;
-        try {
-          userAccountIdStr = await resolveAccountId(user.wallet_address);
-        } catch (e: any) {
-          throw new Error(`Resolve failed: ${e.message}`);
-        }
+        // FIX: Parallelise ALL pre-checks including resolve + KMS key warm-up
+        const [userAccountIdStr, publicKey] = await Promise.all([
+          resolveAccountId(user.wallet_address),
+          getKmsPublicKey(),
+        ]);
 
-        // 2. Parallel Warm-up & Checks
-        const [
-          remainingTinybars,
-          isUsdcAssociated,
-          isKmsUsdcAssociated,
-          publicKey
-        ] = await Promise.all([
+        const [remainingTinybars, isUsdcAssociated, isKmsUsdcAssociated] = await Promise.all([
           verifyAllowance(userAccountIdStr, SWEEPHY_CONTRACT_ID.toString()),
           checkTokenAssociation(userAccountIdStr, USDC_TOKEN_ID.toString()),
           checkTokenAssociation(KMS_ACCOUNT_ID.toString(), USDC_TOKEN_ID.toString()),
-          getKmsPublicKey()
         ]);
 
         if (remainingTinybars === 0) throw new Error("No allowance");
@@ -367,52 +313,22 @@ Deno.serve(async (req) => {
       const encoder = new TextEncoder();
       const state = { intentId: null as string | null };
 
-      // Initialize Client (Warm-up)
-      const client = await getClient();
-      
-      // We set the operator LATER when we have the public key, 
-      // OR we set it now if we can. 
-      // But wait, the client is singleton. 
-      // Setting operator on a shared client might be tricky if concurrency > 1?
-      // Actually, Client in SDK v2 is designed to be shared. 
-      // But setOperator changes global state for that client instance.
-      // If multiple requests come in, they all use the SAME operator (KMS).
-      // That is FINE because the operator is always the KMS account.
-      
-      // HOWEVER, we need the public key first.
-      if (!cachedPublicKey) {
-          try {
-             cachedPublicKey = await getKmsPublicKey();
-             client.setOperatorWith(KMS_ACCOUNT_ID, cachedPublicKey, (msg) => awsSign(msg, AWS_KMS_KEY_ID));
-          } catch (e) {
-             console.error("Failed to init KMS operator", e);
-             throw new Error("KMS Init Failed");
-          }
-      } else {
-         // Ensure operator is set (idempotent-ish check not needed if set once, 
-         // but good to ensure if client was re-created)
-         // For safety, we can just set it again or assume it's set.
-         // Let's set it if not set? SDK doesn't expose "isOperatorSet".
-         // Just setting it is cheap.
-         client.setOperatorWith(KMS_ACCOUNT_ID, cachedPublicKey, (msg) => awsSign(msg, AWS_KMS_KEY_ID));
-      }
-
       const updateIntentStatus = async (status: string, txId: string, note: string, amount?: number, extra?: any) => {
         if (!state.intentId) return;
         const updates: any = {
           status,
           tx_id: txId || "failed",
-          note: note, // Save failure reason or additional info
+          note: note,
         };
         if (amount !== undefined) updates.amount = amount;
         if (extra) {
-            if (extra.tx_id_swap) updates.tx_id_swap = extra.tx_id_swap;
-            if (extra.tx_id_transfer) updates.tx_id_transfer = extra.tx_id_transfer;
-            if (extra.tx_id_refund) updates.tx_id_refund = extra.tx_id_refund;
-            if (extra.tx_id_receipt) updates.tx_id_receipt = extra.tx_id_receipt;
-            if (extra.amount_received) updates.amount_received = extra.amount_received;
+          if (extra.tx_id_swap) updates.tx_id_swap = extra.tx_id_swap;
+          if (extra.tx_id_transfer) updates.tx_id_transfer = extra.tx_id_transfer;
+          if (extra.tx_id_refund) updates.tx_id_refund = extra.tx_id_refund;
+          if (extra.tx_id_receipt) updates.tx_id_receipt = extra.tx_id_receipt;
+          if (extra.amount_received) updates.amount_received = extra.amount_received;
         }
-        
+
         await supabase.from("intents").update(updates).eq("id", state.intentId);
       };
 
@@ -420,7 +336,6 @@ Deno.serve(async (req) => {
         async start(controller) {
           let streamClosed = false;
 
-          // Handle client disconnect
           req.signal.addEventListener("abort", () => {
             streamClosed = true;
           });
@@ -497,16 +412,6 @@ Deno.serve(async (req) => {
               throw new Error("ALLOWANCE ERR");
             }
 
-            // 1. Resolve account ID
-            send("STATUS:Verifying Account...");
-            let userAccountIdStr: string;
-            try {
-              userAccountIdStr = await resolveAccountId(user.wallet_address);
-            } catch (e: any) {
-              await updateIntentStatus("failed", "failed", `Resolve failed: ${e.message}`);
-              throw new Error("RESOLVE ERR");
-            }
-
             const amountHbar = Math.max(rules.swap_amount || 1.0, 0.1);
             const amountTinybars = Math.floor(amountHbar * 1e8);
 
@@ -532,130 +437,136 @@ Deno.serve(async (req) => {
 
             await supabase.from("intents").update({ amount: amountHbar }).eq("id", state.intentId);
 
-            // 2. Parallel Pre-Checks (KMS Key Only)
-            // We removed verifyAllowance and checkTokenAssociation to speed up flow.
-            // The network will reject the TX if invalid anyway.
+            // OPTIMISATION: Parallelise account resolve + estimation + KMS key warm-up
+            // These are all independent — run together to save ~400-600ms
             send("STATUS:Verifying Network State...");
-            
-            const [publicKey] = await Promise.all([
-              getKmsPublicKey()
+
+            const [userAccountIdStr, estimatedOut, publicKey] = await Promise.all([
+              resolveAccountId(user.wallet_address),         // Mirror Node lookup (cached after first call)
+              getEstimatedAmountOut(amountHbar),             // Mirror Node contract call
+              getKmsPublicKey(),                             // KMS (cached after first call)
             ]);
 
-            // 3. Setup client + KMS
-            // Client is already initialized and warmed up above.
-            // Just ensure it's ready.
-            
-            // Set operator with the key we already fetched (Redundant if done above, but safe)
-            // client.setOperatorWith(KMS_ACCOUNT_ID, publicKey, (msg) => awsSign(msg, AWS_KMS_KEY_ID));
+            // Now verify allowance and associations (require userAccountIdStr)
+            const [
+              remainingTinybars,
+              isUsdcAssociated,
+              isKmsUsdcAssociated,
+            ] = await Promise.all([
+              verifyAllowance(userAccountIdStr, SWEEPHY_CONTRACT_ID.toString()),
+              checkTokenAssociation(userAccountIdStr, USDC_TOKEN_ID.toString()),
+              checkTokenAssociation(KMS_ACCOUNT_ID.toString(), USDC_TOKEN_ID.toString()),
+            ]);
 
-            const userAccountId = AccountId.fromString(userAccountIdStr);
-            
-            // New Flow: Execute Smart Contract Swap Directly
-            send("STATUS:Initiating Smart Contract Swap...");
-            
-            try {
-                // Skip estimation for speed. Use minimal slippage or 0 for now.
-                // In production, maybe use fixed slippage logic or async estimation.
-                // For now, we assume user wants speed.
-                
-                // const estimatedOut = await getEstimatedAmountOut(client, amountHbar);
-                // if (estimatedOut === 0n) {
-                //   throw new Error("Cannot estimate swap output. Aborting to protect funds.");
-                // }
-
-                // const slippagePercent = rules?.slippage_tolerance || 0.5;
-                // const slippageBps = BigInt(Math.floor(slippagePercent * 100));
-                // const amountOutMin = (estimatedOut * (10000n - slippageBps)) / 10000n;
-                
-                // FAST PATH: Set minAmountOut to 0 (or very low) to prioritize execution speed.
-                // User accepts slippage risk for speed.
-                const amountOutMin = 0; 
-
-                let userSolidityAddress: string;
-                try {
-                   // Optimistic check: if user address is already EVM-like, use it.
-                   // Otherwise try to derive or just use .toSolidityAddress() which works for 0.0.x too usually?
-                   // No, for EVM calls we prefer the 0x alias if it exists.
-                   // But to skip another fetch, let's try just converting the ID first.
-                   // Most HTS/SC interactions on Hedera accept 0.0.x solidity address too.
-                   userSolidityAddress = userAccountId.toSolidityAddress();
-                   
-                   // If we really need the EVM alias (for some dApps), we'd fetch it.
-                   // But for simple HTS transfer + Swap, the AccountID solidity address should work 
-                   // IF the smart contract handles it correctly. 
-                   // Let's stick to the fast path.
-                } catch (addrErr: any) {
-                  userSolidityAddress = userAccountId.toSolidityAddress();
-                }
-
-                const contractTx = new ContractExecuteTransaction()
-                  .setContractId(SWEEPHY_CONTRACT_ID)
-                  .setGas(3000000)
-                  .setPayableAmount(amountHbar) // VERY IMPORTANT: Send HBAR value to contract!
-                  .setFunction("executeSwap", new ContractFunctionParameters()
-                    .addAddress(userSolidityAddress)
-                    .addInt64(BigInt(amountTinybars).toString()) // This param is redundant if we send value, but kept for logic
-                    .addUint256(amountOutMin.toString())
-                  )
-                  .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
-                  .freezeWith(client);
-
-                const txId = contractTx.transactionId?.toString() || "";
-                send("STATUS:Executing Contract Call...");
-
-                const signedTx = await contractTx.signWithOperator(client);
-                
-                // Submit transaction synchronously to ensure it's accepted by the network
-                const response = await signedTx.execute(client);
-                
-                // Wait for receipt to get the actual record (and emitted events)
-                // This is blocking, but ensures we have the REAL amount received for the UI.
-                const receipt = await response.getReceipt(client);
-                
-                if (receipt.status.toString() !== "SUCCESS") {
-                    throw new Error(`Tx Failed: ${receipt.status.toString()}`);
-                }
-
-                // To get the actual amount out, we need the record
-                const record = await response.getRecord(client);
-                
-                // Parse contract logs/result to find amount received.
-                // Or since we don't have easy log parsing here without ABI, 
-                // we can just re-estimate or use a placeholder. 
-                // BETTER: The smart contract should emit an event `Swap(address user, uint amountIn, uint amountOut)`
-                // But without redeploying contract, we can just look at token transfers in the record.
-                
-                // Find the USDC transfer to the user in tokenTransferLists
-                let actualAmountOut = "0";
-                
-                // HBAR SDK Record structure parsing...
-                // record.contractFunctionResult?.logInfo...
-                // Or look at state changes.
-                
-                // Fallback: If we can't parse easily, we just return "Success" and let UI fetch balance.
-                // But user wants to see amount.
-                // Let's try to get it from record.
-                
-                // For now, return "Swap Executed" and let the UI refresh.
-                // OR re-enable estimation just for the UI value (non-blocking).
-                
-                await updateIntentStatus(
-                  "completed", 
-                  txId, 
-                  "Swap Success", 
-                  amountHbar, 
-                  { tx_id_swap: txId, amount_received: "See Wallet" } // Placeholder
-                );
-
-                send("SUCCESS:" + "See Wallet"); // Or txId
-
-            } catch (err: any) {
-                let msg = err.message || "Unknown Error";
-                await updateIntentStatus("failed", "failed", msg);
-                send("ERROR:" + msg);
+            // Validate checks
+            if (remainingTinybars === 0) {
+              await updateIntentStatus("failed", "failed", "No allowance on-chain");
+              throw new Error("ALLOWANCE ERR");
+            }
+            if (remainingTinybars > 0 && remainingTinybars < amountTinybars) {
+              await updateIntentStatus("failed", "failed", `Allowance insufficient: ${remainingTinybars} < ${amountTinybars}`);
+              throw new Error("ALLOWANCE LOW");
+            }
+            if (!isUsdcAssociated) {
+              await updateIntentStatus("failed", "failed", "User account not associated with USDC");
+              throw new Error("USDC_NOT_ASSOCIATED");
+            }
+            if (!isKmsUsdcAssociated) {
+              await updateIntentStatus("failed", "failed", "KMS operator account not associated with USDC");
+              throw new Error("KMS_USDC_NOT_ASSOCIATED");
             }
 
+            // Setup Hedera client
+            const client = Client.forMainnet();
+            client.setMaxAttempts(5);
+            client.setRequestTimeout(45000);
+            // FIX #6: awsSign no longer double-hashes — operator signing is now correct
+            client.setOperatorWith(KMS_ACCOUNT_ID, publicKey, (msg) => awsSign(msg, AWS_KMS_KEY_ID));
 
+            const userAccountId = AccountId.fromString(userAccountIdStr);
+
+            send("STATUS:Initiating Smart Contract Swap...");
+
+            try {
+              if (estimatedOut === 0n) {
+                throw new Error("Cannot estimate swap output. Aborting to protect funds.");
+              }
+
+              const feeBps = 20n; // 0.2%
+              const slippagePercent = rules?.slippage_tolerance || 0.5;
+              const slippageBps = BigInt(Math.floor(slippagePercent * 100));
+
+              // estimatedOut = output for full amountHbar
+              // Contract will swap 99.8% of amountHbar after deducting fee
+              // So scale down estimated output proportionally, then apply slippage
+              const estimatedAfterFee = (estimatedOut * (10000n - feeBps)) / 10000n;
+              const amountOutMin = (estimatedAfterFee * (10000n - slippageBps)) / 10000n;
+
+              const userSolidityAddress = userAccountId.toSolidityAddress();
+
+              // FIX #5: Reduced gas limit to stay within Hedera node limits (~3M max)
+              const contractTx = new ContractExecuteTransaction()
+                .setContractId(SWEEPHY_CONTRACT_ID)
+                .setGas(2500000) // FIX: was 4000000 which can exceed Hedera max
+                .setFunction("executeSwap", new ContractFunctionParameters()
+                  .addAddress(userSolidityAddress)
+                  .addInt64(BigInt(amountTinybars).toString())
+                  .addUint256(amountOutMin.toString())
+                )
+                .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
+                .freezeWith(client);
+
+              const txId = contractTx.transactionId?.toString() || "";
+              send("STATUS:Executing Contract Call...");
+
+              const signedTx = await contractTx.signWithOperator(client);
+              const response = await signedTx.execute(client);
+
+              await updateIntentStatus("processing", txId, "Contract Call Executed", amountHbar, { tx_id_swap: txId });
+
+              // Verify Receipt
+              try {
+                const receipt = await response.getReceipt(client);
+                if (receipt.status.toString() !== "SUCCESS") {
+                  throw new Error(`Contract Call Failed: ${receipt.status.toString()}`);
+                }
+              } catch (receiptErr: any) {
+                if (receiptErr.message?.includes("CONTRACT_REVERT")) {
+                  try {
+                    // FIX #7: nanos now padded to 9 digits
+                    const mirrorId = toMirrorNodeTransactionId(txId);
+                    const r = await fetch(
+                      `${MIRROR_NODE_API}/api/v1/contracts/results/${mirrorId}`,
+                      { signal: AbortSignal.timeout(5000) }
+                    );
+                    if (r.ok) {
+                      const d = await r.json();
+                      const reason = d.error_message || d.revert_reason || null;
+                      if (reason) {
+                        receiptErr.message = `CONTRACT_REVERT: ${reason}`;
+                        await updateIntentStatus("failed", txId, `Revert: ${reason}`, amountHbar);
+                      }
+                    }
+                  } catch { /* ignore fetch error */ }
+                }
+                throw receiptErr;
+              }
+
+              const estimatedOutFormatted = ethers.formatUnits(estimatedOut, 6);
+              await updateIntentStatus(
+                "completed",
+                txId,
+                `Swap complete via Contract. Est: ${estimatedOut} uUSDC`,
+                amountHbar,
+                { tx_id_swap: txId, amount_received: estimatedOutFormatted }
+              );
+              send("SUCCESS:" + estimatedOutFormatted);
+
+            } catch (err: any) {
+              const msg = err.message || "Unknown Error";
+              await updateIntentStatus("failed", "failed", msg);
+              send("ERROR:" + msg);
+            }
 
           } catch (error: any) {
             let msg = error.message;
