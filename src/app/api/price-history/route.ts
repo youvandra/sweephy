@@ -7,7 +7,7 @@ export async function GET(request: Request) {
 
   try {
     // Use data-api.binance.vision for more reliable public access without region blocks
-    const response = await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=HBARUSDT&interval=${interval}&limit=${limit}`, {
+    const response = await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=HBARUSDC&interval=${interval}&limit=${limit}`, {
       next: { revalidate: 3600 } // Cache for 1 hour
     });
 
