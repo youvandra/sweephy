@@ -32,7 +32,15 @@ type RuleInputProps = {
   description?: string;
   placeholder?: string;
   presets?: number[];
+  min?: number;
 };
+
+const toNumber = (v: number | string) => {
+  const n = Number(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : NaN;
+};
+
+const toCommaString = (v: unknown) => (v === null || v === undefined || v === "" ? "" : String(v).replace(".", ","));
 
 const RuleInput = ({ label, value, onChange, icon: Icon, suffix, description, placeholder, presets }: RuleInputProps) => (
   <div className="space-y-3 bg-white p-5 rounded-2xl border border-secondary/10 hover:border-primary/50 transition-colors group">
@@ -48,9 +56,25 @@ const RuleInput = ({ label, value, onChange, icon: Icon, suffix, description, pl
     <div className="space-y-3">
       <div className="relative">
         <input 
-          type="number" 
+          type="text"
+          inputMode="decimal"
           value={value} 
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            const cleaned = raw.replace(/[^0-9.,]/g, "");
+            const firstSep = cleaned.search(/[.,]/);
+            if (firstSep === -1) {
+              onChange(cleaned);
+              return;
+            }
+            const head = cleaned.slice(0, firstSep + 1);
+            const tail = cleaned.slice(firstSep + 1).replace(/[.,]/g, "");
+            onChange(head + tail);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "-" || e.key === "+" || e.key === "e" || e.key === "E") e.preventDefault();
+          }}
+          pattern="^[0-9]*([.,][0-9]*)?$"
           className="w-full px-4 py-3 bg-secondary-light/50 border border-transparent rounded-xl font-bold text-secondary focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all placeholder:text-alt-2"
           placeholder={placeholder}
         />
@@ -60,9 +84,9 @@ const RuleInput = ({ label, value, onChange, icon: Icon, suffix, description, pl
           {presets.map((preset: number) => (
             <button
               key={preset}
-              onClick={() => onChange(preset)}
+              onClick={() => onChange(String(preset).replace(".", ","))}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                Number(value) === preset 
+                toNumber(value) === preset 
                   ? "bg-primary text-secondary shadow-md shadow-primary/20" 
                   : "bg-gray-100 text-gray-500 hover:bg-gray-200"
               }`}
@@ -153,12 +177,13 @@ export default function RulesPage() {
       ]);
 
       if (rulesData) {
+        const slippage = Math.max(0.5, toNumber(String(rulesData.slippage_tolerance ?? "")) || 0);
         const loadedRules = {
-          swap_amount: rulesData.swap_amount ?? "",
-          max_per_swap: rulesData.max_per_swap ?? "",
-          daily_limit: rulesData.daily_limit ?? "",
-          cooldown_seconds: rulesData.cooldown_seconds ?? "",
-          slippage_tolerance: rulesData.slippage_tolerance ?? "",
+          swap_amount: toCommaString(rulesData.swap_amount ?? ""),
+          max_per_swap: toCommaString(rulesData.max_per_swap ?? ""),
+          daily_limit: toCommaString(rulesData.daily_limit ?? ""),
+          cooldown_seconds: toCommaString(rulesData.cooldown_seconds ?? ""),
+          slippage_tolerance: toCommaString(slippage),
           allowance_granted: rulesData.allowance_granted || false,
           hbar_allowance_amount: rulesData.hbar_allowance_amount || 0,
         };
@@ -388,17 +413,34 @@ export default function RulesPage() {
     if (!userId) return;
     setLoading(true);
 
-    const { error } = await saveRules(userId, rules);
+    const normalizedRules = {
+      ...rules,
+      swap_amount: toNumber(rules.swap_amount) || 0,
+      max_per_swap: toNumber(rules.max_per_swap) || 0,
+      daily_limit: toNumber(rules.daily_limit) || 0,
+      cooldown_seconds: toNumber(rules.cooldown_seconds) || 0,
+      slippage_tolerance: Math.max(0.5, toNumber(rules.slippage_tolerance) || 0),
+    };
+
+    const { error } = await saveRules(userId, normalizedRules);
     
     if (error) {
       toast.error("Failed to save settings: " + error.message);
     } else {
+      setRules((prev) => ({
+        ...prev,
+        swap_amount: String(normalizedRules.swap_amount).replace(".", ","),
+        max_per_swap: String(normalizedRules.max_per_swap).replace(".", ","),
+        daily_limit: String(normalizedRules.daily_limit).replace(".", ","),
+        cooldown_seconds: String(normalizedRules.cooldown_seconds).replace(".", ","),
+        slippage_tolerance: String(normalizedRules.slippage_tolerance).replace(".", ","),
+      }));
       setInitialRules({
-        swap_amount: rules.swap_amount,
-        max_per_swap: rules.max_per_swap,
-        daily_limit: rules.daily_limit,
-        cooldown_seconds: rules.cooldown_seconds,
-        slippage_tolerance: rules.slippage_tolerance,
+        swap_amount: String(normalizedRules.swap_amount).replace(".", ","),
+        max_per_swap: String(normalizedRules.max_per_swap).replace(".", ","),
+        daily_limit: String(normalizedRules.daily_limit).replace(".", ","),
+        cooldown_seconds: String(normalizedRules.cooldown_seconds).replace(".", ","),
+        slippage_tolerance: String(normalizedRules.slippage_tolerance).replace(".", ","),
       });
       toast.success("Settings saved successfully!");
     }
@@ -685,7 +727,7 @@ export default function RulesPage() {
                   suffix="%" 
                   description="Your transaction will revert if the price changes unfavorably by more than this percentage." 
                   placeholder="0.5" 
-                  presets={[0.1, 0.5, 1, 3]}
+                  presets={[0.5, 1, 3]}
                 />
               </div>
             </div>
