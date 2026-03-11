@@ -27,7 +27,7 @@ async function verifySignature(payload: string, signature: string, secret: strin
   return await crypto.subtle.verify("HMAC", key, signatureBytes, payloadBytes);
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: { "Access-Control-Allow-Origin": "*" } });
   }
@@ -42,7 +42,7 @@ serve(async (req) => {
     // 1. Fetch Device
     const { data: device, error: deviceError } = await supabase
       .from("devices")
-      .select("*, profiles(*), pairing_codes(*)")
+      .select("id, is_paired, status, secret_hash, pairing_codes(used, expires_at, code)")
       .eq("id", device_id)
       .single();
 
@@ -60,14 +60,16 @@ serve(async (req) => {
     }
 
     // 3. Update Heartbeat
-    await supabase.from("devices").update({ 
+    supabase.from("devices").update({
       last_seen: new Date().toISOString(),
-      status: "online"
-    }).eq("id", device_id);
+      status: "online",
+    }).eq("id", device_id).then(() => {});
 
     // 4. Handle Pairing Code Logic
-    const pairingCodes = device.pairing_codes as Array<{ used: boolean; expires_at: string; code: string }> | undefined;
-    let pairingCode = pairingCodes?.find((c) => !c.used && new Date(c.expires_at) > new Date())?.code;
+    let pairingCode = device.pairing_codes?.find(
+      (c: { used?: boolean; expires_at?: string; code?: string }) =>
+        !c.used && !!c.expires_at && new Date(c.expires_at) > new Date()
+    )?.code;
     
     if (!device.is_paired && !pairingCode) {
         // Generate new pairing code
@@ -80,13 +82,31 @@ serve(async (req) => {
         if (!codeError) pairingCode = newCode;
     }
 
+    const { data: latestIntent } = await supabase
+      .from("intents")
+      .select("id, status, tx_id, note, created_at, amount, amount_received, tx_id_swap, tx_id_transfer, tx_id_refund, tx_id_receipt")
+      .eq("device_id", device_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const intent = latestIntent
+      ? {
+        ...latestIntent,
+        amount: latestIntent.amount == null ? null : String(latestIntent.amount),
+        amount_received: latestIntent.amount_received == null ? null : String(latestIntent.amount_received),
+      }
+      : null;
+
     return new Response(JSON.stringify({ 
       is_paired: device.is_paired, 
       status: device.status,
-      pairing_code: pairingCode || null
+      pairing_code: pairingCode || null,
+      intent
     }), { headers: { "Content-Type": "application/json" } });
 
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return new Response(JSON.stringify({ error: msg }), { status: 500 });
   }
 });

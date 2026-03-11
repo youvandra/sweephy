@@ -19,7 +19,6 @@ const AWS_REGION = getEnv("AWS_REGION");
 const AWS_KMS_KEY_ID = getEnv("AWS_KMS_KEY_ID");
 const MIRROR_NODE_API = "https://mainnet-public.mirrornode.hedera.com";
 const KMS_ACCOUNT_ID = AccountId.fromString(getEnv("KMS_ACCOUNT_ID") || "0.0.10304901");
-const SWEEPHY_CONTRACT_ID = ContractId.fromString(getEnv("SWEEPHY_CONTRACT_ID") || "0.0.10354696");
 const SECP256K1_N = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
 
 // SAUCERSWAP CONSTANTS (Mainnet)
@@ -36,9 +35,6 @@ const kmsClient = new KMSClient({
 });
 
 let cachedPublicKey: PublicKey | null = null;
-
-// FIX #5: Cache resolved account IDs to avoid redundant Mirror Node calls
-const accountIdCache = new Map<string, string>();
 
 function derToRaw(der: Uint8Array): { r: Uint8Array; s: Uint8Array } {
   let offset = 0;
@@ -67,12 +63,13 @@ function derToRaw(der: Uint8Array): { r: Uint8Array; s: Uint8Array } {
   return { r: to32Bytes(r), s: to32Bytes(s) };
 }
 
-// FIX #6: Remove double-hash. Hedera SDK already sends pre-hashed message bytes.
-// Passing messageHashBytes directly to KMS as DIGEST — no keccak256 re-hash needed.
 async function awsSign(messageHashBytes: Uint8Array, keyId: string): Promise<Uint8Array> {
+  const digestHex = ethers.keccak256(messageHashBytes).replace("0x", "");
+  const digest = new Uint8Array(digestHex.match(/.{1,2}/g)!.map((b: string) => parseInt(b, 16)));
+
   const response = await kmsClient.send(new SignCommand({
     KeyId: keyId,
-    Message: messageHashBytes, // Already a digest from Hedera SDK — do NOT re-hash
+    Message: digest,
     MessageType: "DIGEST",
     SigningAlgorithm: "ECDSA_SHA_256",
   }));
@@ -111,11 +108,8 @@ async function getKmsPublicKey(): Promise<PublicKey> {
   return cachedPublicKey;
 }
 
-// FIX #5: Added in-memory cache to avoid repeat Mirror Node lookups
 async function resolveAccountId(address: string): Promise<string> {
   if (address.match(/^\d+\.\d+\.\d+$/)) return address;
-
-  if (accountIdCache.has(address)) return accountIdCache.get(address)!;
 
   const evmAddr = address.startsWith("0x") ? address : "0x" + address;
 
@@ -127,11 +121,9 @@ async function resolveAccountId(address: string): Promise<string> {
   const data = await res.json();
   if (!data.account) throw new Error(`No Hedera account for: ${evmAddr}`);
 
-  accountIdCache.set(address, data.account);
   return data.account;
 }
 
-// FIX #7: Pad nanos to 9 digits for correct Mirror Node transaction ID format
 function toMirrorNodeTransactionId(txId: string): string {
   const at = txId.indexOf("@");
   if (at === -1) return txId;
@@ -140,8 +132,18 @@ function toMirrorNodeTransactionId(txId: string): string {
   const dot = validStart.indexOf(".");
   if (dot === -1) return `${account}-${validStart}`;
   const seconds = validStart.slice(0, dot);
-  const nanos = validStart.slice(dot + 1).padStart(9, "0"); // FIX: always 9 digits
+  const nanos = validStart.slice(dot + 1);
   return `${account}-${seconds}-${nanos}`;
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message || "Unknown error";
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return "Unknown error";
+  }
 }
 
 // Verify on-chain allowance with pagination
@@ -153,14 +155,10 @@ async function verifyAllowance(ownerAccountId: string, spenderAccountId: string)
     const res = await fetch(nextLink, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return -1;
 
-    const data = (await res.json()) as {
-      allowances?: Array<{ spender?: string; amount?: number }>;
-      links?: { next?: string };
-    };
+    const data = await res.json() as { allowances?: Array<{ spender?: string; amount?: number }>; links?: { next?: string } };
     const allowances = data.allowances || [];
-
     const match = allowances.find((a) => a.spender === spenderAccountId);
-    if (match?.amount !== undefined) return Number(match.amount);
+    if (match) return Number(match.amount);
 
     nextLink = data.links?.next ? `${MIRROR_NODE_API}${data.links.next}` : null;
   }
@@ -184,28 +182,7 @@ async function checkTokenAssociation(accountId: string, tokenId: string): Promis
   }
 }
 
-async function verifySignature(payload: string, signatureHex: string, secret: string): Promise<boolean> {
-  try {
-    const sig = signatureHex.trim().toLowerCase();
-    if (!sig.match(/^[0-9a-f]+$/) || sig.length % 2 !== 0) return false;
-
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(secret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"]
-    );
-
-    const signatureBytes = new Uint8Array(sig.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)));
-    const payloadBytes = new TextEncoder().encode(payload);
-    return await crypto.subtle.verify("HMAC", key, signatureBytes, payloadBytes);
-  } catch {
-    return false;
-  }
-}
-
-async function getEstimatedAmountOut(amountHbar: number): Promise<bigint> {
+async function getEstimatedAmountOut(client: Client, amountHbar: number): Promise<bigint> {
   try {
     const amountTinybars = BigInt(Math.floor(amountHbar * 1e8));
     const path = [WHBAR_TOKEN_ID.toSolidityAddress(), USDC_TOKEN_ID.toSolidityAddress()];
@@ -222,7 +199,7 @@ async function getEstimatedAmountOut(amountHbar: number): Promise<bigint> {
         block: "latest",
         data: encodedData,
         to: SAUCERSWAP_ROUTER_ID.toSolidityAddress(),
-        estimate: false
+        estimate: false 
       })
     });
 
@@ -231,16 +208,17 @@ async function getEstimatedAmountOut(amountHbar: number): Promise<bigint> {
     }
 
     const result = await response.json();
+    
     const decoded = iface.decodeFunctionResult("getAmountsOut", result.result);
-    const amounts = decoded[0];
-
+    const amounts = decoded[0]; 
+    
     return BigInt(amounts[amounts.length - 1].toString());
-  } catch (e) {
+  } catch {
     return BigInt(0);
   }
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", {
       headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*" },
@@ -254,8 +232,8 @@ Deno.serve(async (req) => {
       throw new Error("Missing env vars");
     }
 
-    const { device_id, payload: payloadStr, signature } = await req.json();
-    if (!device_id || !payloadStr || !signature) throw new Error("Missing device_id, payload, or signature");
+    const { device_id, payload: payloadStr } = await req.json();
+    if (!device_id || !payloadStr) throw new Error("Missing device_id or payload");
 
     const { data: device, error: deviceError } = await supabase
       .from("devices")
@@ -267,22 +245,14 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Device not found" }), { status: 404 });
     }
 
-    const isValid = await verifySignature(payloadStr, signature, device.secret_hash);
-    if (!isValid) {
-      return new Response(JSON.stringify({ error: "Invalid signature" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    // Check if device is disabled
+    // Check if device is disabled - Block all actions if disabled
     if (device.is_disabled) {
       return new Response(JSON.stringify({ error: "DEVICE_DISABLED" }), { status: 403 });
     }
 
     const { action, pairing_code } = JSON.parse(payloadStr);
 
-    // Heartbeat (fire-and-forget)
+    // Heartbeat
     supabase.from("devices")
       .update({ last_seen: new Date().toISOString(), status: "online" })
       .eq("id", device_id)
@@ -297,31 +267,30 @@ Deno.serve(async (req) => {
         const rules = user.rules;
         if (!rules?.allowance_granted) throw new Error("Allowance not granted");
 
-        // FIX: Parallelise ALL pre-checks including resolve + KMS key warm-up
-        const [userAccountIdStr, publicKey] = await Promise.all([
-          resolveAccountId(user.wallet_address),
-          getKmsPublicKey(),
-        ]);
+        // 1. Resolve Account
+        let userAccountIdStr: string;
+        try {
+          userAccountIdStr = await resolveAccountId(user.wallet_address);
+        } catch (e: unknown) {
+          throw new Error(`Resolve failed: ${errorMessage(e)}`);
+        }
 
+        // 2. Parallel Warm-up & Checks
         const [
           remainingTinybars,
           isUsdcAssociated,
           isKmsUsdcAssociated,
-          isContractUsdcAssociated,
-          isContractWhbarAssociated
+          publicKey
         ] = await Promise.all([
-          verifyAllowance(userAccountIdStr, SWEEPHY_CONTRACT_ID.toString()),
+          verifyAllowance(userAccountIdStr, KMS_ACCOUNT_ID.toString()),
           checkTokenAssociation(userAccountIdStr, USDC_TOKEN_ID.toString()),
           checkTokenAssociation(KMS_ACCOUNT_ID.toString(), USDC_TOKEN_ID.toString()),
-          checkTokenAssociation(SWEEPHY_CONTRACT_ID.toString(), USDC_TOKEN_ID.toString()),
-          checkTokenAssociation(SWEEPHY_CONTRACT_ID.toString(), WHBAR_TOKEN_ID.toString()),
+          getKmsPublicKey()
         ]);
 
         if (remainingTinybars === 0) throw new Error("No allowance");
         if (!isUsdcAssociated) throw new Error("User USDC not associated");
         if (!isKmsUsdcAssociated) throw new Error("KMS USDC not associated");
-        if (!isContractUsdcAssociated) throw new Error("Contract USDC not associated");
-        if (!isContractWhbarAssociated) throw new Error("Contract WHBAR not associated");
         if (!publicKey) throw new Error("KMS Key init failed");
 
         return new Response(JSON.stringify({ status: "ready", message: "System Ready" }), {
@@ -329,8 +298,7 @@ Deno.serve(async (req) => {
         });
 
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Unknown Error";
-        return new Response(JSON.stringify({ status: "not_ready", error: msg }), {
+        return new Response(JSON.stringify({ status: "not_ready", error: errorMessage(e) }), {
           status: 400,
           headers: { "Content-Type": "application/json" },
         });
@@ -351,12 +319,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // --- SWAP (Streaming Response) ---
+    // --- SWAP ---
     if (action === "swap") {
-      const encoder = new TextEncoder();
-      const state = { intentId: null as string | null };
+      const sleep = (ms: number) => new Promise<void>((r: () => void) => setTimeout(r, ms));
 
       const updateIntentStatus = async (
+        intentId: string,
         status: string,
         txId: string,
         note: string,
@@ -366,14 +334,13 @@ Deno.serve(async (req) => {
           tx_id_transfer: string;
           tx_id_refund: string;
           tx_id_receipt: string;
-          amount_received: string | number;
+          amount_received: string;
         }>
       ) => {
-        if (!state.intentId) return;
         const updates: Record<string, unknown> = {
           status,
           tx_id: txId || "failed",
-          note: note,
+          note,
         };
         if (amount !== undefined) updates.amount = amount;
         if (extra) {
@@ -383,291 +350,346 @@ Deno.serve(async (req) => {
           if (extra.tx_id_receipt) updates.tx_id_receipt = extra.tx_id_receipt;
           if (extra.amount_received) updates.amount_received = extra.amount_received;
         }
-
-        await supabase.from("intents").update(updates).eq("id", state.intentId);
+        await supabase.from("intents").update(updates).eq("id", intentId);
       };
 
-      const stream = new ReadableStream({
-        async start(controller) {
-          let streamClosed = false;
-
-          req.signal.addEventListener("abort", () => {
-            streamClosed = true;
+      const getUsdcReceived = async (swapTxId: string, userAccountIdStr: string): Promise<bigint> => {
+        const mirrorId = toMirrorNodeTransactionId(swapTxId);
+        for (let i = 0; i < 20; i++) {
+          const r = await fetch(`${MIRROR_NODE_API}/api/v1/transactions/${mirrorId}`, {
+            signal: AbortSignal.timeout(8000),
           });
+          if (r.ok) {
+            const d = await r.json() as {
+              transactions?: Array<{ token_transfers?: Array<{ token_id?: string; account?: string; amount?: number }> }>;
+            };
+            const tokenTransfers = d.transactions?.[0]?.token_transfers || [];
+            const received = tokenTransfers
+              .filter((t) => t.token_id === USDC_TOKEN_ID.toString() && t.account === userAccountIdStr && (t.amount ?? 0) > 0)
+              .reduce((sum, t) => sum + BigInt(t.amount || 0), 0n);
+            if (received > 0n) return received;
+            const anyPositive = tokenTransfers
+              .filter((t) => t.token_id === USDC_TOKEN_ID.toString() && (t.amount ?? 0) > 0)
+              .reduce((sum, t) => sum + BigInt(t.amount || 0), 0n);
+            if (anyPositive > 0n) return anyPositive;
+          }
+          await sleep(1000);
+        }
+        return 0n;
+      };
 
-          const send = (msg: string) => {
-            if (streamClosed) return;
-            try {
-              controller.enqueue(encoder.encode(msg + "\n"));
-            } catch (e) {
-              streamClosed = true;
-            }
-          };
+      const { data: recentIntent } = await supabase
+        .from("intents")
+        .select("created_at, status")
+        .eq("device_id", device_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-          const keepaliveInterval = setInterval(() => {
-            if (streamClosed) {
-              clearInterval(keepaliveInterval);
-              return;
-            }
-            try {
-              controller.enqueue(encoder.encode("PING\n"));
-            } catch {
-              streamClosed = true;
-              clearInterval(keepaliveInterval);
-            }
-          }, 5000);
+      if (recentIntent) {
+        const timeDiff = Date.now() - new Date(recentIntent.created_at).getTime();
+        if (
+          timeDiff < 60000 &&
+          (recentIntent.status === "processing" || recentIntent.status === "success" || recentIntent.status === "completed")
+        ) {
+          return new Response(JSON.stringify({ error: "Too Many Requests" }), { status: 429 });
+        }
+      }
 
+      const { data: newIntent, error: intentError } = await supabase.from("intents").insert({
+        device_id: device_id,
+        action: "swap",
+        pair: "HBAR/USDC",
+        amount: 0,
+        status: "pending",
+        tx_id: "pending",
+        note: "Ready for swap..",
+      }).select().single();
+
+      if (intentError || !newIntent) throw new Error("DB Error: Failed to init intent");
+      const intentId = newIntent.id as string;
+
+      const user = device.profiles;
+      const rules = user?.rules;
+
+      if (!device.is_paired) {
+        await updateIntentStatus(intentId, "failed", "failed", "Device not paired");
+        return new Response(JSON.stringify({ intent_id: intentId }), { headers: { "Content-Type": "application/json" } });
+      }
+
+      if (!rules?.allowance_granted) {
+        await updateIntentStatus(intentId, "failed", "failed", "Allowance not granted in DB");
+        return new Response(JSON.stringify({ intent_id: intentId }), { headers: { "Content-Type": "application/json" } });
+      }
+
+      const background = async () => {
+        const amountHbar = Math.max(rules.swap_amount || 1.0, 0.1);
+        const amountTinybars = Math.floor(amountHbar * 1e8);
+
+        try {
+          await updateIntentStatus(intentId, "processing", "pending", "Execute Swap", amountHbar);
+
+          let userAccountIdStr = "";
           try {
-            send("STATUS:Verifying Device...");
+            userAccountIdStr = await resolveAccountId(user.wallet_address);
+          } catch (e: unknown) {
+            await updateIntentStatus(intentId, "failed", "failed", `Resolve failed: ${errorMessage(e)}`, amountHbar);
+            return;
+          }
 
-            // Idempotency Check
-            const { data: recentIntent } = await supabase
+          if (rules.daily_limit && rules.daily_limit > 0) {
+            const today = new Date().toISOString().split("T")[0];
+            const { data: dailyStats, error: dailyError } = await supabase
               .from("intents")
-              .select("created_at, status")
+              .select("amount")
               .eq("device_id", device_id)
-              .order("created_at", { ascending: false })
-              .limit(1)
-              .maybeSingle();
+              .eq("status", "completed")
+              .gte("created_at", `${today}T00:00:00.000Z`)
+              .lte("created_at", `${today}T23:59:59.999Z`);
 
-            if (recentIntent) {
-              const timeDiff = Date.now() - new Date(recentIntent.created_at).getTime();
-              if (
-                timeDiff < 60000 &&
-                (recentIntent.status === "processing" ||
-                  recentIntent.status === "success" ||
-                  recentIntent.status === "completed")
-              ) {
-                send("ERROR:Too Many Requests");
+            if (!dailyError && dailyStats) {
+              const totalSwappedToday = dailyStats.reduce(
+                (sum: number, intent: { amount?: number }) => sum + (intent.amount || 0),
+                0
+              );
+              if (totalSwappedToday + amountHbar > rules.daily_limit) {
+                await updateIntentStatus(intentId, "failed", "failed", "Daily limit reached", amountHbar);
                 return;
               }
             }
+          }
 
-            const { data: newIntent, error: intentError } = await supabase.from("intents").insert({
-              device_id: device_id,
-              action: "swap",
-              pair: "HBAR/USDC",
-              amount: 0,
-              status: "processing",
-              tx_id: "pending",
-            }).select().single();
+          const [
+            remainingTinybars,
+            isUsdcAssociated,
+            isKmsUsdcAssociated,
+            publicKey,
+          ] = await Promise.all([
+            verifyAllowance(userAccountIdStr, KMS_ACCOUNT_ID.toString()),
+            checkTokenAssociation(userAccountIdStr, USDC_TOKEN_ID.toString()),
+            checkTokenAssociation(KMS_ACCOUNT_ID.toString(), USDC_TOKEN_ID.toString()),
+            getKmsPublicKey(),
+          ]);
 
-            if (intentError || !newIntent) throw new Error("DB Error: Failed to init intent");
-            state.intentId = newIntent.id;
+          if (remainingTinybars <= 0) {
+            await updateIntentStatus(intentId, "failed", "failed", "No allowance on-chain", amountHbar);
+            return;
+          }
+          if (BigInt(remainingTinybars) < BigInt(amountTinybars)) {
+            await updateIntentStatus(intentId, "failed", "failed", "Allowance insufficient", amountHbar);
+            return;
+          }
+          if (!isUsdcAssociated) {
+            await updateIntentStatus(intentId, "failed", "failed", "USDC not associated", amountHbar);
+            return;
+          }
+          if (!isKmsUsdcAssociated) {
+            await updateIntentStatus(intentId, "failed", "failed", "KMS USDC not associated", amountHbar);
+            return;
+          }
 
-            if (!device.is_paired) {
-              await updateIntentStatus("failed", "failed", "Device not paired");
-              throw new Error("Device not paired");
-            }
+          const client = Client.forMainnet();
+          client.setMaxAttempts(10);
+          client.setRequestTimeout(60000);
+          client.setOperatorWith(KMS_ACCOUNT_ID, publicKey, (msg: Uint8Array) => awsSign(msg, AWS_KMS_KEY_ID));
 
-            const user = device.profiles;
-            const rules = user?.rules;
+          const userAccountId = AccountId.fromString(userAccountIdStr);
+          const NETWORK_FEE_BUFFER = 0.001;
+          const totalPullAmount = amountHbar + NETWORK_FEE_BUFFER;
 
-            if (!rules?.allowance_granted) {
-              await updateIntentStatus("failed", "failed", "Allowance not granted in DB");
-              throw new Error("ALLOWANCE ERR");
-            }
+          const transferTx = new TransferTransaction()
+            .addApprovedHbarTransfer(userAccountId, new Hbar(-totalPullAmount))
+            .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(totalPullAmount))
+            .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
+            .setMaxTransactionFee(new Hbar(2))
+            .freezeWith(client);
+          const signedTransferTx = await transferTx.signWithOperator(client);
+          const transferTxId = transferTx.transactionId?.toString() || "";
 
-            const amountHbar = Math.max(rules.swap_amount || 1.0, 0.1);
-            const amountTinybars = Math.floor(amountHbar * 1e8);
-
-            // Daily Limit Check
-            if (rules.daily_limit && rules.daily_limit > 0) {
-              const today = new Date().toISOString().split("T")[0];
-              const { data: dailyStats, error: dailyError } = await supabase
-                .from("intents")
-                .select("amount")
-                .eq("device_id", device_id)
-                .eq("status", "completed")
-                .gte("created_at", `${today}T00:00:00.000Z`)
-                .lte("created_at", `${today}T23:59:59.999Z`);
-
-              if (!dailyError && dailyStats) {
-                const stats = dailyStats as Array<{ amount: number | null }>;
-                const totalSwappedToday = stats.reduce((sum, intent) => sum + (intent.amount || 0), 0);
-                if (totalSwappedToday + amountHbar > rules.daily_limit) {
-                  await updateIntentStatus("failed", "failed", `Daily limit reached. Used: ${totalSwappedToday}, Limit: ${rules.daily_limit}`);
-                  throw new Error(`DAILY_LIMIT_EXCEEDED: Used ${totalSwappedToday.toFixed(2)}/${rules.daily_limit}`);
+          try {
+            await Promise.race([
+              signedTransferTx.execute(client).then((res: { getReceipt: (c: Client) => Promise<unknown> }) => res.getReceipt(client)),
+              sleep(60000).then(() => {
+                throw new Error("TRANSFER_TIMEOUT");
+              }),
+            ]);
+          } catch (e: unknown) {
+            const msg = errorMessage(e);
+            if (msg === "TRANSFER_TIMEOUT" || msg.includes("max attempts") || msg.includes("UNKNOWN")) {
+              const mirrorTxId = toMirrorNodeTransactionId(transferTxId);
+              let recovered = false;
+              for (let attempt = 0; attempt < 6; attempt++) {
+                await sleep(2000);
+                const check = await fetch(`${MIRROR_NODE_API}/api/v1/transactions/${mirrorTxId}`, {
+                  signal: AbortSignal.timeout(8000),
+                });
+                if (check.ok) {
+                  const data = await check.json() as { transactions?: Array<{ result?: string }> };
+                  if (data.transactions?.find((t) => t.result === "SUCCESS")) {
+                    recovered = true;
+                    break;
+                  }
+                  if ((data.transactions?.length ?? 0) > 0) break;
                 }
               }
+              if (!recovered) {
+                await updateIntentStatus(intentId, "failed", "failed", `Transfer not confirmed: ${msg}`, amountHbar);
+                return;
+              }
+            } else {
+              await updateIntentStatus(intentId, "failed", "failed", msg, amountHbar);
+              return;
+            }
+          }
+
+          await updateIntentStatus(intentId, "processing", transferTxId, "Transfer OK", amountHbar, { tx_id_transfer: transferTxId });
+
+          let swapTxId = "";
+          const swapTask = async () => {
+            const estimatedOut = await getEstimatedAmountOut(client, amountHbar);
+            if (estimatedOut === 0n) throw new Error("Cannot estimate swap output");
+
+            const slippagePercent = rules?.slippage_tolerance || 0.5;
+            const slippageBps = BigInt(Math.floor(slippagePercent * 100));
+            const amountOutMin = (estimatedOut * (10000n - slippageBps)) / 10000n;
+
+            let to: string;
+            try {
+              const accRes = await fetch(`${MIRROR_NODE_API}/api/v1/accounts/${userAccountIdStr}`, {
+                signal: AbortSignal.timeout(8000),
+              });
+              if (!accRes.ok) throw new Error("Mirror node account fetch failed");
+              const accData = await accRes.json() as { evm_address?: string };
+              const evmAddress = accData.evm_address;
+              if (!evmAddress || evmAddress.length < 40) throw new Error("No valid evm_address");
+              to = evmAddress.startsWith("0x") ? evmAddress : "0x" + evmAddress;
+            } catch {
+              to = userAccountId.toSolidityAddress();
             }
 
-            await supabase.from("intents").update({ amount: amountHbar }).eq("id", state.intentId);
+            const deadline = Math.floor(Date.now() / 1000) + 1200;
+            const path = [WHBAR_TOKEN_ID.toSolidityAddress(), USDC_TOKEN_ID.toSolidityAddress()];
+            const swapTx = new ContractExecuteTransaction()
+              .setContractId(SAUCERSWAP_ROUTER_ID)
+              .setGas(2500000)
+              .setPayableAmount(amountHbar)
+              .setFunction("swapExactETHForTokens", new ContractFunctionParameters()
+                .addUint256(amountOutMin.toString())
+                .addAddressArray(path)
+                .addAddress(to)
+                .addUint256(deadline)
+              )
+              .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
+              .freezeWith(client);
 
-            // OPTIMISATION: Parallelise account resolve + estimation + KMS key warm-up
-            // These are all independent — run together to save ~400-600ms
-            send("STATUS:Verifying Network State...");
+            swapTxId = swapTx.transactionId?.toString() || "";
+            const signedSwapTx = await swapTx.signWithOperator(client);
+            const swapResponse = await signedSwapTx.execute(client);
+            await swapResponse.getReceipt(client);
 
-            const [userAccountIdStr, estimatedOut, publicKey] = await Promise.all([
-              resolveAccountId(user.wallet_address),         // Mirror Node lookup (cached after first call)
-              getEstimatedAmountOut(amountHbar),             // Mirror Node contract call
-              getKmsPublicKey(),                             // KMS (cached after first call)
+            const actualReceived = await getUsdcReceived(swapTxId, userAccountIdStr);
+            const amountReceivedStr = actualReceived > 0n ? ethers.formatUnits(actualReceived, 6) : ethers.formatUnits(estimatedOut, 6);
+
+            await updateIntentStatus(
+              intentId,
+              "completed",
+              transferTxId,
+              "Success",
+              amountHbar,
+              {
+                tx_id_swap: swapTxId,
+                tx_id_receipt: swapTxId,
+                amount_received: amountReceivedStr,
+              }
+            );
+          };
+
+          try {
+            await Promise.race([
+              swapTask(),
+              sleep(90000).then(() => {
+                throw new Error("SWAP_TIMEOUT");
+              }),
             ]);
-
-            // Now verify allowance and associations (require userAccountIdStr)
-            const [
-              remainingTinybars,
-              isUsdcAssociated,
-              isKmsUsdcAssociated,
-              isContractUsdcAssociated,
-              isContractWhbarAssociated,
-            ] = await Promise.all([
-              verifyAllowance(userAccountIdStr, SWEEPHY_CONTRACT_ID.toString()),
-              checkTokenAssociation(userAccountIdStr, USDC_TOKEN_ID.toString()),
-              checkTokenAssociation(KMS_ACCOUNT_ID.toString(), USDC_TOKEN_ID.toString()),
-              checkTokenAssociation(SWEEPHY_CONTRACT_ID.toString(), USDC_TOKEN_ID.toString()),
-              checkTokenAssociation(SWEEPHY_CONTRACT_ID.toString(), WHBAR_TOKEN_ID.toString()),
-            ]);
-
-            // Validate checks
-            if (remainingTinybars === 0) {
-              await updateIntentStatus("failed", "failed", "No allowance on-chain");
-              throw new Error("ALLOWANCE ERR");
+          } catch (swapErr: unknown) {
+            const swapErrMsg = errorMessage(swapErr);
+            if (swapTxId) {
+              try {
+                const mirrorId = toMirrorNodeTransactionId(swapTxId);
+                const check = await fetch(`${MIRROR_NODE_API}/api/v1/transactions/${mirrorId}`, {
+                  signal: AbortSignal.timeout(8000),
+                });
+                if (check.ok) {
+                  const data = await check.json() as { transactions?: Array<{ result?: string }> };
+                  if (data.transactions?.find((t) => t.result === "SUCCESS")) {
+                    const actualReceived = await getUsdcReceived(swapTxId, userAccountIdStr);
+                    const amountReceivedStr = actualReceived > 0n ? ethers.formatUnits(actualReceived, 6) : "0";
+                    await updateIntentStatus(
+                      intentId,
+                      "completed",
+                      transferTxId,
+                      "Success",
+                      amountHbar,
+                      {
+                        tx_id_swap: swapTxId,
+                        tx_id_receipt: swapTxId,
+                        amount_received: amountReceivedStr,
+                      }
+                    );
+                    return;
+                  }
+                }
+              } catch {
+                // ignore
+              }
             }
-            if (remainingTinybars > 0 && remainingTinybars < amountTinybars) {
-              await updateIntentStatus("failed", "failed", `Allowance insufficient: ${remainingTinybars} < ${amountTinybars}`);
-              throw new Error("ALLOWANCE LOW");
-            }
-            if (!isUsdcAssociated) {
-              await updateIntentStatus("failed", "failed", "User account not associated with USDC");
-              throw new Error("USDC_NOT_ASSOCIATED");
-            }
-            if (!isKmsUsdcAssociated) {
-              await updateIntentStatus("failed", "failed", "KMS operator account not associated with USDC");
-              throw new Error("KMS_USDC_NOT_ASSOCIATED");
-            }
-            if (!isContractUsdcAssociated) {
-              await updateIntentStatus("failed", "failed", "Swap contract not associated with USDC");
-              throw new Error("CONTRACT_USDC_NOT_ASSOCIATED");
-            }
-            if (!isContractWhbarAssociated) {
-              await updateIntentStatus("failed", "failed", "Swap contract not associated with WHBAR");
-              throw new Error("CONTRACT_WHBAR_NOT_ASSOCIATED");
-            }
-
-            // Setup Hedera client
-            const client = Client.forMainnet();
-            client.setMaxAttempts(5);
-            client.setRequestTimeout(45000);
-            // FIX #6: awsSign no longer double-hashes — operator signing is now correct
-            client.setOperatorWith(KMS_ACCOUNT_ID, publicKey, (msg: Uint8Array) => awsSign(msg, AWS_KMS_KEY_ID));
-
-            const userAccountId = AccountId.fromString(userAccountIdStr);
-
-            send("STATUS:Initiating Smart Contract Swap...");
 
             try {
-              if (estimatedOut === 0n) {
-                throw new Error("Cannot estimate swap output. Aborting to protect funds.");
-              }
-
-              const feeBps = 20n; // 0.2%
-              const slippagePercent = rules?.slippage_tolerance || 0.5;
-              const slippageBps = BigInt(Math.floor(slippagePercent * 100));
-
-              // estimatedOut = output for full amountHbar
-              // Contract will swap 99.8% of amountHbar after deducting fee
-              // So scale down estimated output proportionally, then apply slippage
-              const estimatedAfterFee = (estimatedOut * (10000n - feeBps)) / 10000n;
-              const amountOutMin = (estimatedAfterFee * (10000n - slippageBps)) / 10000n;
-
-              const userSolidityAddress = userAccountId.toSolidityAddress();
-
-              // FIX #5: Reduced gas limit to stay within Hedera node limits (~3M max)
-              const contractTx = new ContractExecuteTransaction()
-                .setContractId(SWEEPHY_CONTRACT_ID)
-                .setGas(2500000) // FIX: was 4000000 which can exceed Hedera max
-                .setFunction("executeSwap", new ContractFunctionParameters()
-                  .addAddress(userSolidityAddress)
-                  .addInt64(BigInt(amountTinybars).toString())
-                  .addUint256(amountOutMin.toString())
-                )
+              const refundTx = new TransferTransaction()
+                .addHbarTransfer(KMS_ACCOUNT_ID, new Hbar(-totalPullAmount))
+                .addHbarTransfer(userAccountId, new Hbar(totalPullAmount))
                 .setTransactionId(TransactionId.generate(KMS_ACCOUNT_ID))
                 .freezeWith(client);
-
-              const txId = contractTx.transactionId?.toString() || "";
-              send("STATUS:Executing Contract Call...");
-
-              const signedTx = await contractTx.signWithOperator(client);
-              const response = await signedTx.execute(client);
-
-              await updateIntentStatus("processing", txId, "Contract Call Executed", amountHbar, { tx_id_swap: txId });
-
-              // Verify Receipt
-              try {
-                const receipt = await response.getReceipt(client);
-                if (receipt.status.toString() !== "SUCCESS") {
-                  throw new Error(`Contract Call Failed: ${receipt.status.toString()}`);
-                }
-              } catch (receiptErr: unknown) {
-                const receiptMsg = receiptErr instanceof Error ? receiptErr.message : String(receiptErr);
-                if (receiptMsg.includes("CONTRACT_REVERT")) {
-                  try {
-                    // FIX #7: nanos now padded to 9 digits
-                    const mirrorId = toMirrorNodeTransactionId(txId);
-                    const r = await fetch(
-                      `${MIRROR_NODE_API}/api/v1/contracts/results/${mirrorId}`,
-                      { signal: AbortSignal.timeout(5000) }
-                    );
-                    if (r.ok) {
-                      const d = await r.json();
-                      const reason = d.error_message || d.revert_reason || null;
-                      if (reason) {
-                        await updateIntentStatus("failed", txId, `Revert: ${reason}`, amountHbar);
-                      }
-                    }
-                  } catch { /* ignore fetch error */ }
-                }
-                throw new Error(receiptMsg);
-              }
-
-              const estimatedOutFormatted = ethers.formatUnits(estimatedOut, 6);
+              const signedRefund = await refundTx.signWithOperator(client);
+              const refundRes = await signedRefund.execute(client);
+              const refundReceipt = await refundRes.getReceipt(client);
+              const refundTxId = refundTx.transactionId?.toString() || "";
               await updateIntentStatus(
-                "completed",
-                txId,
-                `Swap complete via Contract. Est: ${estimatedOut} uUSDC`,
+                intentId,
+                "failed",
+                transferTxId,
+                `Swap Failed: ${swapErrMsg}. REFUNDED.`,
                 amountHbar,
-                { tx_id_swap: txId, amount_received: estimatedOutFormatted }
+                { tx_id_refund: refundTxId, tx_id_receipt: refundTxId }
               );
-              send("SUCCESS:" + estimatedOutFormatted);
-
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : "Unknown Error";
-              await updateIntentStatus("failed", "failed", msg);
-              send("ERROR:" + msg);
+              void refundReceipt;
+            } catch (refundErr: unknown) {
+              await updateIntentStatus(
+                intentId,
+                "failed",
+                transferTxId,
+                `Swap Failed & REFUND FAILED: ${errorMessage(refundErr)}`,
+                amountHbar
+              );
             }
-
-          } catch (error: unknown) {
-            let msg = error instanceof Error ? error.message : "Unknown Error";
-            if (msg.length > 50) msg = msg.substring(0, 50);
-
-            if (state.intentId) {
-              await updateIntentStatus("failed", "failed", `Critical Error: ${msg}`)
-                .catch(() => {});
-            }
-
-            send("ERROR:" + msg);
-          } finally {
-            streamClosed = true;
-            clearInterval(keepaliveInterval);
-            try { controller.close(); } catch { /* already closed */ }
           }
+        } catch (e: unknown) {
+          await updateIntentStatus(intentId, "failed", "failed", errorMessage(e), amountHbar).catch(() => {});
         }
-      });
+      };
 
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/event-stream; charset=utf-8",
-          "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
-          "X-Accel-Buffering": "no",
-        },
+      const waitUntil = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil;
+      if (typeof waitUntil === "function") waitUntil(background());
+      else void background();
+
+      return new Response(JSON.stringify({ intent_id: intentId }), {
+        headers: { "Content-Type": "application/json" },
       });
     }
 
     return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400 });
 
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Unknown Error";
-    return new Response(JSON.stringify({ error: msg }), { status: 500 });
+    return new Response(JSON.stringify({ error: errorMessage(error) }), { status: 500 });
   }
 });

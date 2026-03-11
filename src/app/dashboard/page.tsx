@@ -14,6 +14,7 @@ import { fetchDashboardStats, fetchRecentIntents, DashboardStats, Intent } from 
 import { StatCard } from "@/components/dashboard/StatCard";
 import { TradingChart } from "@/components/dashboard/TradingChart";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
+import { formatError } from "@/lib/format-error";
 
 export default function Dashboard() {
   const { address } = useAppKitAccount();
@@ -59,7 +60,7 @@ export default function Dashboard() {
       setStats(newStats);
       setRecentIntents(newRecent);
     } catch (error) {
-      console.error("Failed to load dashboard data", error);
+      console.error(`Failed to load dashboard data: ${formatError(error)}`);
     } finally {
       setFetching(false);
     }
@@ -142,4 +143,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

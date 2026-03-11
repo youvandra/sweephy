@@ -20,6 +20,49 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Deploy Smart Contract (Hedera Mainnet)
+
+Script deploy contract: [deploy-sweephy-contract.ts](file:///Users/youvandrafebrial/Documents/trae_projects/sweephy/scripts/deploy-sweephy-contract.ts)
+
+```bash
+npx ts-node scripts/deploy-sweephy-contract.ts
+```
+
+Test compile tanpa deploy:
+
+```bash
+npx ts-node scripts/deploy-sweephy-contract.ts --compile-only
+```
+
+Dry-run (cek parameter constructor tanpa broadcast transaksi):
+
+```bash
+npx ts-node scripts/deploy-sweephy-contract.ts --dry-run
+```
+
+Environment variables yang dibutuhkan:
+
+- Pilih salah satu signer untuk deploy:
+  - Local signer:
+    - HEDERA_OPERATOR_ID
+    - HEDERA_OPERATOR_PRIVATE_KEY
+    - HEDERA_OPERATOR_KEY_TYPE (optional: AUTO|DER|ECDSA|ED25519, default: AUTO)
+  - AWS KMS signer:
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+    - AWS_REGION (default: us-east-1)
+    - AWS_KMS_KEY_ID
+    - KMS_ACCOUNT_ID
+
+- SAUCERSWAP_ROUTER_ID (default: 0.0.3045981)
+- WHBAR_TOKEN_ID (default: 0.0.1456986)
+- USDC_TOKEN_ID (default: 0.0.456858)
+
+Flow swap saat ini: user memberi allowance HBAR ke akun KMS, lalu KMS mengeksekusi swap ke SaucerSwap.
+
+- Set `KMS_ACCOUNT_ID` di Supabase Edge Function environment (spender allowance + executor transaksi).
+- Set `NEXT_PUBLIC_KMS_ACCOUNT_ID` di Next.js environment (untuk UI grant/revoke allowance ke KMS).
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

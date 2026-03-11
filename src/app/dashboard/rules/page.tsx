@@ -124,7 +124,7 @@ export default function RulesPage() {
     hbar_allowance_amount: 0,
   });
 
-  const PLATFORM_SPENDER_ID = process.env.NEXT_PUBLIC_SWEEPHY_CONTRACT_ID || "0.0.10354696";
+  const KMS_SPENDER_ID = process.env.NEXT_PUBLIC_KMS_ACCOUNT_ID || "0.0.10304901";
 
   // UI loading states
   const [loading, setLoading] = useState(false);
@@ -149,7 +149,7 @@ export default function RulesPage() {
       
       const [rulesData, allowanceResult] = await Promise.all([
         fetchRules(userId),
-        checkRealtimeAllowance(address, PLATFORM_SPENDER_ID)
+        checkRealtimeAllowance(address, KMS_SPENDER_ID)
       ]);
 
       if (rulesData) {
@@ -232,7 +232,7 @@ export default function RulesPage() {
         client.setNetwork(networkConfig);
       }
 
-      const spenderId = AccountId.fromString(PLATFORM_SPENDER_ID);
+      const spenderId = AccountId.fromString(KMS_SPENDER_ID);
       const ownerId = AccountId.fromString(address);
 
       // Construct and freeze transaction
@@ -277,7 +277,7 @@ export default function RulesPage() {
         }, { onConflict: 'user_id' });
 
         const pollAllowance = async (attempt = 1) => {
-          const res = await checkRealtimeAllowance(address, PLATFORM_SPENDER_ID);
+          const res = await checkRealtimeAllowance(address, KMS_SPENDER_ID);
           if (res.status === "success" && res.allowance_granted) {
              setRules(prev => ({
                  ...prev,
@@ -329,7 +329,7 @@ export default function RulesPage() {
         client.setNetwork(networkConfig);
       }
 
-      const spenderId = AccountId.fromString(PLATFORM_SPENDER_ID);
+      const spenderId = AccountId.fromString(KMS_SPENDER_ID);
       const ownerId = AccountId.fromString(address);
 
       // Set allowance to 0 to revoke

@@ -17,6 +17,7 @@ import { Intent } from "@/lib/api/dashboard";
 import { format } from "date-fns";
 import { Loader2, TrendingUp, TrendingDown, X, ExternalLink } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+import { formatError } from "@/lib/format-error";
 
 interface TradingChartProps {
   intents: Intent[];
@@ -116,7 +117,7 @@ export function TradingChart({ intents }: TradingChartProps) {
           setPriceChange(((lastPrice - firstPrice) / firstPrice) * 100);
         }
       } catch (error) {
-        console.error("Failed to fetch price data", error);
+        console.error(`Failed to fetch price data: ${formatError(error)}`);
       } finally {
         setLoading(false);
       }
