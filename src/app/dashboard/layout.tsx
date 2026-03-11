@@ -204,7 +204,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <Sparkles className="w-4 h-4 text-primary animate-pulse" />
                 </div>
                 <div className="flex flex-col leading-none gap-1">
-                  <p className="text-[10px] font-bold text-primary tracking-widest uppercase">Limited Offer</p>
+                  <p className="text-[10px] font-bold text-primary tracking-widest uppercase">Hold $SWEEP</p>
                   <p className="text-sm font-bold text-white flex items-center gap-1.5">
                     Get <span className="text-primary">50% OFF</span> Sweephy Product
                   </p>
