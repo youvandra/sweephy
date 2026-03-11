@@ -26,7 +26,7 @@ export default function ContactPage() {
               Get in <span className="text-primary">Touch</span>
             </h1>
             <p className="text-xl 2xl:text-3xl text-gray-300 max-w-lg leading-relaxed">
-              Have questions about your order, shipping, or setup? We're here to help.
+              Have questions about your order, shipping, or setup? We&apos;re here to help.
             </p>
           </div>
 

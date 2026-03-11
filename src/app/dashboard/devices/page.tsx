@@ -7,16 +7,24 @@ import { useToast } from "@/components/ui/Toast";
 import { useProfile } from "@/hooks/useProfile";
 import { fetchDevices, toggleDeviceStatus, deleteDevice, renameDevice, claimDevice } from "@/lib/api/devices";
 
+interface Device {
+  id: string;
+  name: string;
+  is_disabled: boolean;
+  last_seen: string;
+  status?: string;
+}
+
 export default function DevicesPage() {
   const { userId, loading: profileLoading } = useProfile();
   const toast = useToast();
-  const [devices, setDevices] = useState<any[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [pairingCodeInput, setPairingCodeInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
-  const [deviceToDelete, setDeviceToDelete] = useState<any>(null);
-  const [editingDevice, setEditingDevice] = useState<any>(null);
+  const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null);
+  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [newDeviceName, setNewDeviceName] = useState("");
 
   useEffect(() => {
@@ -39,8 +47,8 @@ export default function DevicesPage() {
 
   async function loadDevices() {
     if (!userId) return;
-    const data = await fetchDevices(userId);
-    setDevices(data);
+    const data = (await fetchDevices(userId)) as Device[];
+    setDevices(data || []);
     setFetching(false);
   }
 
@@ -53,8 +61,8 @@ export default function DevicesPage() {
       setIsAdding(false);
       loadDevices();
       toast.success("Device successfully paired!");
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to pair device");
     } finally {
       setLoading(false);
     }
@@ -87,7 +95,7 @@ export default function DevicesPage() {
     }
   }
 
-  async function handleToggleStatus(device: any) {
+  async function handleToggleStatus(device: Device) {
     const newDisabledStatus = !device.is_disabled;
     const { error } = await toggleDeviceStatus(device.id, newDisabledStatus);
     
@@ -243,7 +251,7 @@ export default function DevicesPage() {
               <div>
                 <h3 className="text-lg font-bold text-secondary">No Devices Connected</h3>
                 <p className="text-gray-500 mt-1 max-w-md mx-auto">
-                  You haven't paired any Sweephy hardware wallets yet. Click "Add Device" to get started.
+                  You haven&apos;t paired any Sweephy hardware wallets yet. Click &quot;Add Device&quot; to get started.
                 </p>
               </div>
             </div>
@@ -322,4 +330,3 @@ export default function DevicesPage() {
     </div>
   );
 }
-

@@ -66,7 +66,8 @@ serve(async (req) => {
     }).eq("id", device_id);
 
     // 4. Handle Pairing Code Logic
-    let pairingCode = device.pairing_codes?.find((c: any) => !c.used && new Date(c.expires_at) > new Date())?.code;
+    const pairingCodes = device.pairing_codes as Array<{ used: boolean; expires_at: string; code: string }> | undefined;
+    let pairingCode = pairingCodes?.find((c) => !c.used && new Date(c.expires_at) > new Date())?.code;
     
     if (!device.is_paired && !pairingCode) {
         // Generate new pairing code

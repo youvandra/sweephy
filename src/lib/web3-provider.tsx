@@ -13,16 +13,13 @@ const hedera = HederaChainDefinition.Native.Mainnet
 class ProductionHederaAdapter extends HederaAdapter {
   private _networks: CaipNetwork[]
 
-  constructor(params: any) {
+  constructor(params: { networks: CaipNetwork[]; namespace: string } & Record<string, unknown>) {
     // Filter networks based on the namespace we are initializing with
     // The base HederaAdapter constructor throws if we pass mixed networks that don't match the namespace
-    const filteredNetworks = params.networks.filter((n: any) => n.chainNamespace === params.namespace)
+    const filteredNetworks = params.networks.filter((n) => n.chainNamespace === params.namespace)
     
     // Pass only the matching networks to the super constructor
-    super({
-        ...params,
-        networks: filteredNetworks
-    })
+    super(({ ...params, networks: filteredNetworks } as unknown) as ConstructorParameters<typeof HederaAdapter>[0])
     
     // Store ALL networks for our custom behavior
     this._networks = params.networks as CaipNetwork[]
@@ -38,7 +35,7 @@ class ProductionHederaAdapter extends HederaAdapter {
   }
 
   // Implement missing abstract method from AdapterBlueprint
-  async writeSolanaTransaction(params: any): Promise<any> {
+  async writeSolanaTransaction(_params: unknown): Promise<unknown> {
     throw new Error('Solana not supported on Hedera adapter')
   }
 }

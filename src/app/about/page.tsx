@@ -50,7 +50,7 @@ export default function AboutPage() {
         
         <div className="max-w-[1920px] mx-auto px-6 md:px-12 2xl:px-24 pt-32 md:pt-40 pb-20 2xl:pb-32">
           <h1 className="text-4xl md:text-6xl 2xl:text-7xl font-bold tracking-tight max-w-4xl leading-tight mb-16 md:mb-24">
-            We've built a new way to keep up with the things you care about.
+            We&apos;ve built a new way to keep up with the things you care about.
           </h1>
 
           {/* Video Placeholder */}
@@ -76,13 +76,13 @@ export default function AboutPage() {
       <section className="bg-[#FDFBF7] text-secondary py-20 md:py-32 px-6 md:px-12 2xl:px-24">
         <div className="max-w-4xl mx-auto space-y-12">
           <h2 className="text-3xl md:text-5xl font-bold leading-tight">
-            Hey, we're the creators of Sweephy.
+            Hey, we&apos;re the creators of Sweephy.
           </h2>
           
           <div className="space-y-8 text-lg md:text-xl leading-relaxed font-medium text-secondary/90">
             <p>
               The original idea for Sweephy was to make a device that simplified our daily crypto routines. 
-              What's the price of HBAR? How is my portfolio doing? When is the next governance vote? 
+              What&apos;s the price of HBAR? How is my portfolio doing? When is the next governance vote? 
               Having to reach for our phones over and over again to answer these questions was a pain.
             </p>
             <p>

@@ -35,7 +35,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-2xl font-bold text-secondary-darker mb-4">Use License</h2>
             <p>
-              Permission is granted to temporarily download one copy of the materials (information or software) on Sweephy's 
+              Permission is granted to temporarily download one copy of the materials (information or software) on Sweephy&apos;s 
               website for personal, non-commercial transitory viewing only. This is the grant of a license, not a transfer of title.
             </p>
           </section>
@@ -43,7 +43,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-2xl font-bold text-secondary-darker mb-4">Disclaimer</h2>
             <p>
-              The materials on Sweephy's website are provided on an 'as is' basis. Sweephy makes no warranties, expressed or implied, 
+              The materials on Sweephy&apos;s website are provided on an &apos;as is&apos; basis. Sweephy makes no warranties, expressed or implied, 
               and hereby disclaims and negates all other warranties including, without limitation, implied warranties or conditions 
               of merchantability, fitness for a particular purpose, or non-infringement of intellectual property or other violation of rights.
             </p>
@@ -54,7 +54,7 @@ export default function TermsPage() {
             <p>
               In no event shall Sweephy or its suppliers be liable for any damages (including, without limitation, damages for loss 
               of data or profit, or due to business interruption) arising out of the use or inability to use the materials on 
-              Sweephy's website.
+              Sweephy&apos;s website.
             </p>
           </section>
 

@@ -22,14 +22,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [hederaId, setHederaId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  async function checkAdminStatus(walletAddress: string) {
+    if (!walletAddress) return;
+    const { data } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .or(`wallet_address.ilike.${walletAddress},wallet_address.eq.${walletAddress}`)
+      .limit(1)
+      .maybeSingle();
+    if (data?.is_admin) setIsAdmin(true);
+  }
+
   // ✅ Use two conditions: timeout fallback + definitive isConnected status
-  const [hydrated, setHydrated] = useState(false);
+  const [timeoutHydrated, setTimeoutHydrated] = useState(false);
+  const hydrated = timeoutHydrated || isConnected !== undefined;
 
   useEffect(() => {
     // Safety net: force hydrated after 1.5s even if isConnected is still undefined
     // Handles cases where AppKit resolves slowly due to dual-network setup
     const timeout = setTimeout(() => {
-      setHydrated(true);
+      setTimeoutHydrated(true);
     }, 1500);
 
     return () => clearTimeout(timeout);
@@ -44,15 +56,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // If isConnected is undefined, wait.
     if (isConnected === undefined) return;
 
-    setHydrated(true);
-
     // Only redirect if explicitly disconnected AND status is confirmed 'disconnected'
     if (isConnected === false && status === 'disconnected') {
       router.replace('/');
     } else if (address) {
       if (address.includes(".")) {
-        setHederaId(address);
-        checkAdminStatus(address);
+        Promise.resolve().then(() => {
+          setHederaId(address);
+          checkAdminStatus(address);
+        });
       } else {
         fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${address}`)
           .then(res => res.json())
@@ -68,17 +80,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
     }
   }, [isConnected, address, router, status]);
-
-  async function checkAdminStatus(walletAddress: string) {
-    if (!walletAddress) return;
-    const { data } = await supabase
-      .from("profiles")
-      .select("is_admin")
-      .or(`wallet_address.ilike.${walletAddress},wallet_address.eq.${walletAddress}`)
-      .limit(1)
-      .maybeSingle();
-    if (data?.is_admin) setIsAdmin(true);
-  }
 
   const navItems = [
     { icon: LayoutDashboard, label: "Overview", href: "/dashboard" },

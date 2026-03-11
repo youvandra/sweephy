@@ -6,10 +6,61 @@ import { Search, Download, Filter, FileText, CheckCircle2, XCircle, AlertTriangl
 import { useAppKitAccount } from "@reown/appkit/react";
 import { useToast } from "@/components/ui/Toast";
 
+type DeviceOption = {
+  id: string;
+  name: string;
+};
+
+type IntentLog = {
+  id: string;
+  device_id: string;
+  action: string;
+  pair: string;
+  amount: number | null;
+  status: string;
+  tx_id: string | null;
+  tx_id_swap?: string | null;
+  tx_id_transfer?: string | null;
+  tx_id_refund?: string | null;
+  tx_id_receipt?: string | null;
+  amount_received?: number | string | null;
+  note?: string | null;
+  created_at: string;
+  devices?: { name: string } | null;
+};
+
+const StatusIcon = ({ status }: { status: string }) => {
+  switch (status) {
+    case 'completed': return <div className="w-2 h-2 rounded-full bg-green-500" />;
+    case 'failed': return <div className="w-2 h-2 rounded-full bg-red-500" />;
+    default: return <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />;
+  }
+};
+
+const TableSkeleton = () => (
+  <div className="w-full bg-white rounded-[24px] border border-gray-100 shadow-sm overflow-hidden animate-pulse">
+    <div className="p-6 border-b border-gray-100 flex items-center gap-4">
+      <div className="h-10 bg-gray-100 rounded-xl w-full"></div>
+    </div>
+    <div className="p-6 space-y-4">
+      {[...Array(5)].map((_, i) => (
+        <div key={i} className="flex items-center justify-between gap-4">
+          <div className="h-4 bg-gray-100 rounded w-24"></div>
+          <div className="h-4 bg-gray-100 rounded w-32"></div>
+          <div className="h-4 bg-gray-100 rounded w-20"></div>
+          <div className="h-4 bg-gray-100 rounded w-16"></div>
+          <div className="h-4 bg-gray-100 rounded w-24"></div>
+          <div className="h-4 bg-gray-100 rounded w-24"></div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 export default function AuditPage() {
   const { address } = useAppKitAccount();
   const toast = useToast();
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<IntentLog[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   
   // Pagination State
@@ -22,21 +73,12 @@ export default function AuditPage() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterDevice, setFilterDevice] = useState("all");
   const [filterDate, setFilterDate] = useState("");
-  const [devices, setDevices] = useState<any[]>([]);
+  const [devices, setDevices] = useState<DeviceOption[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [selectedLog, setSelectedLog] = useState<any>(null);
+  const [selectedLog, setSelectedLog] = useState<IntentLog | null>(null);
 
   // ─── Data Fetching ───────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (address) {
-      fetchLogs();
-      fetchDevices();
-    } else {
-      setLoading(false);
-    }
-  }, [address, currentPage, searchTerm, filterStatus, filterDevice, filterDate]); 
 
   /**
    * Resolves the current wallet address to a Supabase user ID.
@@ -129,6 +171,18 @@ export default function AuditPage() {
     setLoading(false);
   }
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (address) {
+        fetchLogs();
+        fetchDevices();
+      } else {
+        setLoading(false);
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [address, currentPage, searchTerm, filterStatus, filterDevice, filterDate]);
+
   /**
    * Exports ALL matching logs (without pagination) to a CSV file.
    * Respects all currently active filters.
@@ -220,34 +274,6 @@ export default function AuditPage() {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  const StatusIcon = ({ status }: { status: string }) => {
-    switch (status) {
-      case 'completed': return <div className="w-2 h-2 rounded-full bg-green-500" />;
-      case 'failed': return <div className="w-2 h-2 rounded-full bg-red-500" />;
-      default: return <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />;
-    }
-  };
-
-  const TableSkeleton = () => (
-    <div className="w-full bg-white rounded-[24px] border border-gray-100 shadow-sm overflow-hidden animate-pulse">
-      <div className="p-6 border-b border-gray-100 flex items-center gap-4">
-        <div className="h-10 bg-gray-100 rounded-xl w-full"></div>
-      </div>
-      <div className="p-6 space-y-4">
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="flex items-center justify-between gap-4">
-            <div className="h-4 bg-gray-100 rounded w-24"></div>
-            <div className="h-4 bg-gray-100 rounded w-32"></div>
-            <div className="h-4 bg-gray-100 rounded w-20"></div>
-            <div className="h-4 bg-gray-100 rounded w-16"></div>
-            <div className="h-4 bg-gray-100 rounded w-24"></div>
-            <div className="h-4 bg-gray-100 rounded w-24"></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -292,8 +318,9 @@ export default function AuditPage() {
                 className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-secondary/10 focus:border-secondary"
               >
                 <option value="all">All Status</option>
-                <option value="success">Success</option>
+                <option value="completed">Completed</option>
                 <option value="failed">Failed</option>
+                <option value="processing">Processing</option>
                 <option value="pending">Pending</option>
               </select>
             </div>
@@ -305,7 +332,7 @@ export default function AuditPage() {
                 className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-secondary/10 focus:border-secondary"
               >
                 <option value="all">All Devices</option>
-                {devices.map((d: any) => (
+                {devices.map((d) => (
                   <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
               </select>
@@ -636,4 +663,3 @@ export default function AuditPage() {
     </div>
   );
 }
-

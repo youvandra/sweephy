@@ -6,14 +6,26 @@ import { Plus, Trash2, Tablet, ShieldAlert, Key, Hash, AlertTriangle, X, Copy, C
 import { useAppKitAccount } from "@reown/appkit/react";
 import { useToast } from "@/components/ui/Toast";
 
+type AdminDevice = {
+  id: string;
+  name: string;
+  status: string;
+  is_paired: boolean;
+  user_id?: string | null;
+  last_seen?: string | null;
+  is_disabled?: boolean;
+  pairing_codes?: Array<{ id: string; code: string; used: boolean; expires_at: string }>;
+  profiles?: { wallet_address?: string | null } | null;
+};
+
 export default function AdminPage() {
   const { address } = useAppKitAccount();
   const toast = useToast();
-  const [devices, setDevices] = useState<any[]>([]);
+  const [devices, setDevices] = useState<AdminDevice[]>([]);
   const [loading, setLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [checking, setChecking] = useState(true);
-  const [deviceToDelete, setDeviceToDelete] = useState<any>(null);
+  const [deviceToDelete, setDeviceToDelete] = useState<AdminDevice | null>(null);
   const [newDevice, setNewDevice] = useState<{ id: string; secret: string; pairingCode: string } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -81,7 +93,7 @@ export default function AdminPage() {
       .order("created_at", { ascending: false });
     
     if (error) console.error("Error fetching devices:", error);
-    setDevices(data || []);
+    setDevices((data as AdminDevice[]) || []);
   }
 
   async function handleCreateDevice() {
@@ -107,8 +119,8 @@ export default function AdminPage() {
       fetchAllDevices();
       setNewDevice({ id: device.id, secret, pairingCode: code });
       toast.success("Device provisioned successfully");
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to provision device");
     } finally {
       setLoading(false);
     }
@@ -120,7 +132,6 @@ export default function AdminPage() {
     // Clean up related tables first (if CASCADE is missing)
     await supabase.from("pairing_codes").delete().eq("device_id", deviceToDelete.id);
     await supabase.from("intents").delete().eq("device_id", deviceToDelete.id);
-    await supabase.from("intent_logs").delete().match({ intent_id: deviceToDelete.id }); // Intent logs link to intents, but maybe device_id isn't there directly. Let's trust CASCADE or intent delete.
 
     const { error } = await supabase.from("devices").delete().eq("id", deviceToDelete.id);
     if (error) {
@@ -277,7 +288,7 @@ export default function AdminPage() {
             <div className="bg-blue-50 p-4 rounded-2xl flex gap-3 border border-blue-100">
               <Info className="w-5 h-5 text-blue-500 shrink-0" />
               <p className="text-[11px] text-blue-700 leading-relaxed">
-                Paste the <strong>Device ID</strong> and <strong>Secret</strong> into your <code>sweephy.ino</code> file. Use the <strong>Pairing Code</strong> on the user's dashboard to link the device.
+                Paste the <strong>Device ID</strong> and <strong>Secret</strong> into your <code>sweephy.ino</code> file. Use the <strong>Pairing Code</strong> on the user&apos;s dashboard to link the device.
               </p>
             </div>
 
@@ -285,7 +296,7 @@ export default function AdminPage() {
               onClick={() => setNewDevice(null)}
               className="w-full py-4 rounded-2xl font-bold bg-secondary text-white hover:bg-secondary/90 transition-all shadow-lg shadow-secondary/20"
             >
-              I've saved the credentials
+              I&apos;ve saved the credentials
             </button>
           </div>
         </div>

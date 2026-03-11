@@ -1,11 +1,19 @@
 import { supabase } from "@/lib/supabase";
 
+type RulesInput = {
+  swap_amount: number | string;
+  max_per_swap: number | string;
+  daily_limit: number | string;
+  cooldown_seconds: number | string;
+  slippage_tolerance: number | string;
+};
+
 export async function fetchRules(userId: string) {
   const { data } = await supabase.from("rules").select("*").eq("user_id", userId).single();
   return data;
 }
 
-export async function saveRules(userId: string, rules: any) {
+export async function saveRules(userId: string, rules: RulesInput) {
   const updates = {
     user_id: userId,
     swap_amount: rules.swap_amount,
@@ -43,11 +51,14 @@ export async function checkRealtimeAllowance(address: string, spenderId: string)
 
     if (data?.allowances) {
       const platformAllowance = data.allowances.find(
-        (a: any) => a.spender === spenderId
+        (a: { spender?: string }) => a.spender === spenderId
       );
 
       if (platformAllowance) {
-        const rawAmount = platformAllowance.amount ?? platformAllowance.amount_granted ?? 0;
+        const rawAmount =
+          (platformAllowance as { amount?: number; amount_granted?: number }).amount ??
+          (platformAllowance as { amount?: number; amount_granted?: number }).amount_granted ??
+          0;
         const remainingHbar = Number(rawAmount) / 100_000_000;
         return {
           status: "success",

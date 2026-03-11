@@ -34,6 +34,22 @@ interface EnrichedIntent extends Intent {
   executionPrice: number;
 }
 
+type Kline = [number, string, string, string, string, ...unknown[]];
+
+type CustomDotProps = {
+  cx?: number;
+  cy?: number;
+  payload?: PriceData;
+};
+
+type TooltipPayloadItem = { value: number };
+
+type CustomTooltipProps = {
+  active?: boolean;
+  payload?: TooltipPayloadItem[];
+  label?: string;
+};
+
 export function TradingChart({ intents }: TradingChartProps) {
   const [data, setData] = useState<PriceData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,14 +90,18 @@ export function TradingChart({ intents }: TradingChartProps) {
           throw new Error("Failed to fetch price data");
         }
         
-        const klines = await response.json();
+        const klines: unknown = await response.json();
         
         // Handle potential error from API route
-        if (klines.error) {
-          throw new Error(klines.error);
+        if (typeof klines === "object" && klines !== null && "error" in klines) {
+          const err = (klines as { error?: unknown }).error;
+          throw new Error(typeof err === "string" ? err : "Failed to fetch price data");
+        }
+        if (!Array.isArray(klines)) {
+          throw new Error("Invalid price data");
         }
 
-        const formattedData = klines.map((k: any) => ({
+        const formattedData = (klines as Kline[]).map((k) => ({
           time: k[0],
           price: parseFloat(k[4]),
           dateStr: format(new Date(k[0]), timeFrame === '1D' ? "HH:mm" : "MMM dd"),
@@ -136,7 +156,7 @@ export function TradingChart({ intents }: TradingChartProps) {
     return intentMap;
   }, [data, intents]);
 
-  const CustomDot = (props: any) => {
+  const CustomDot = (props: CustomDotProps) => {
     const { cx, cy, payload } = props;
     
     // Only render if we have valid coordinates and payload
@@ -178,7 +198,7 @@ export function TradingChart({ intents }: TradingChartProps) {
     );
   };
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-[#021B1A] border border-white/10 p-3 rounded-xl shadow-xl">
@@ -328,7 +348,7 @@ export function TradingChart({ intents }: TradingChartProps) {
                 fillOpacity={1} 
                 fill="url(#colorPrice)" 
                 activeDot={{ r: 6, fill: "#00DF81", stroke: "#fff", strokeWidth: 2 }}
-                dot={(props: any) => <CustomDot {...props} />}
+                dot={(props: unknown) => <CustomDot {...(props as CustomDotProps)} />}
               />
               <Brush 
                 dataKey="dateStr" 

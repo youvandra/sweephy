@@ -19,7 +19,22 @@ import { supabase } from "@/lib/supabase";
 
 type AllowanceStatus = "idle" | "loading" | "success" | "error";
 
-const RuleInput = ({ label, value, onChange, icon: Icon, suffix, description, placeholder, presets }: any) => (
+type WalletProvider = {
+  request: (args: { method: string; params?: unknown }) => Promise<unknown>;
+};
+
+type RuleInputProps = {
+  label: string;
+  value: number | string;
+  onChange: (value: string | number) => void;
+  icon: React.ComponentType<{ className?: string }>;
+  suffix?: string;
+  description?: string;
+  placeholder?: string;
+  presets?: number[];
+};
+
+const RuleInput = ({ label, value, onChange, icon: Icon, suffix, description, placeholder, presets }: RuleInputProps) => (
   <div className="space-y-3 bg-white p-5 rounded-2xl border border-secondary/10 hover:border-primary/50 transition-colors group">
     <div className="flex justify-between items-start">
       <label className="text-sm font-bold text-secondary flex items-center gap-2">
@@ -78,9 +93,8 @@ export default function RulesPage() {
   const { address } = useAppKitAccount();
   const { userId, loading: profileLoading } = useProfile();
   const { switchNetwork } = useAppKitNetwork();
-  // @ts-ignore
+  // @ts-expect-error Hedera namespace typing mismatch
   const { walletProvider: hederaProvider } = useAppKitProvider("hedera");
-  // @ts-ignore
   const { walletProvider: evmProvider } = useAppKitProvider("eip155");
   const toast = useToast();
 
@@ -191,15 +205,15 @@ export default function RulesPage() {
 
     setAllowanceLoading(true);
     try {
-      let provider = hederaProvider as any;
+      let provider: WalletProvider | undefined = hederaProvider as unknown as WalletProvider | undefined;
 
       // Fallback to EVM provider with network switch attempt
       if (!provider && evmProvider) {
         try {
-          await switchNetwork({ chainNamespace: "hedera", chainId: "hedera:mainnet" } as any);
-          provider = evmProvider;
+          await switchNetwork({ chainNamespace: "hedera", chainId: "hedera:mainnet" } as unknown as Parameters<typeof switchNetwork>[0]);
+          provider = evmProvider as unknown as WalletProvider;
         } catch (switchErr) {
-          provider = evmProvider;
+          provider = evmProvider as unknown as WalletProvider;
         }
       }
 
@@ -245,7 +259,7 @@ export default function RulesPage() {
              // Or try with just the transactionList string if param structure is different
              const simpleParams = { transactionList: txBase64 };
              result = await provider.request({ method: "hedera_signAndExecuteTransaction", params: [simpleParams] });
-          } catch (e3: any) {
+          } catch (e3: unknown) {
              console.error("Allowance Grant Error:", e3);
              throw new Error("Wallet rejected the transaction or method not supported.");
           }
@@ -277,8 +291,8 @@ export default function RulesPage() {
         };
         setTimeout(() => pollAllowance(1), 3000);
       }
-    } catch (err: any) {
-      toast.error("Failed to grant allowance: " + err.message);
+    } catch (err: unknown) {
+      toast.error("Failed to grant allowance: " + (err instanceof Error ? err.message : "Unknown error"));
     } finally {
       setAllowanceLoading(false);
     }
@@ -292,14 +306,14 @@ export default function RulesPage() {
     
     setRevokeLoading(true);
     try {
-      let provider = hederaProvider as any;
+      let provider: WalletProvider | undefined = hederaProvider as unknown as WalletProvider | undefined;
 
       if (!provider && evmProvider) {
         try {
-          await switchNetwork({ chainNamespace: "hedera", chainId: "hedera:mainnet" } as any);
-          provider = evmProvider;
+          await switchNetwork({ chainNamespace: "hedera", chainId: "hedera:mainnet" } as unknown as Parameters<typeof switchNetwork>[0]);
+          provider = evmProvider as unknown as WalletProvider;
         } catch {
-          provider = evmProvider;
+          provider = evmProvider as unknown as WalletProvider;
         }
       }
 
@@ -336,8 +350,8 @@ export default function RulesPage() {
         } catch {
           try {
             result = await provider.request({ method: "hedera_signTransaction", params: [params] });
-          } catch (e3: any) {
-            throw new Error("Wallet rejected the transaction. " + e3.message);
+          } catch (e3: unknown) {
+            throw new Error("Wallet rejected the transaction. " + (e3 instanceof Error ? e3.message : "Unknown error"));
           }
         }
       }
@@ -360,8 +374,8 @@ export default function RulesPage() {
         setShowAllowanceInput(false);
         setShowRevokeModal(false);
       }
-    } catch (err: any) {
-      toast.error("Failed to revoke allowance: " + err.message);
+    } catch (err: unknown) {
+      toast.error("Failed to revoke allowance: " + (err instanceof Error ? err.message : "Unknown error"));
     } finally {
       setRevokeLoading(false);
     }
@@ -625,7 +639,7 @@ export default function RulesPage() {
               <RuleInput 
                 label="Amount per Click" 
                 value={rules.swap_amount} 
-                onChange={(v: number) => setRules({ ...rules, swap_amount: v })} 
+                onChange={(v) => setRules({ ...rules, swap_amount: v })} 
                 icon={DollarSign} 
                 suffix="HBAR" 
                 description="The exact amount of HBAR to swap when you press the physical button." 
@@ -635,7 +649,7 @@ export default function RulesPage() {
               <RuleInput 
                 label="Max per Swap" 
                 value={rules.max_per_swap} 
-                onChange={(v: number) => setRules({ ...rules, max_per_swap: v })} 
+                onChange={(v) => setRules({ ...rules, max_per_swap: v })} 
                 icon={Shield} 
                 suffix="HBAR" 
                 description="Hard limit for a single transaction to prevent accidental large swaps." 
@@ -645,7 +659,7 @@ export default function RulesPage() {
               <RuleInput 
                 label="Daily Limit" 
                 value={rules.daily_limit} 
-                onChange={(v: number) => setRules({ ...rules, daily_limit: v })} 
+                onChange={(v) => setRules({ ...rules, daily_limit: v })} 
                 icon={Wallet} 
                 suffix="HBAR" 
                 description="Maximum total HBAR volume allowed within a 24-hour period." 
@@ -655,7 +669,7 @@ export default function RulesPage() {
               <RuleInput 
                 label="Cooldown" 
                 value={rules.cooldown_seconds} 
-                onChange={(v: number) => setRules({ ...rules, cooldown_seconds: v })} 
+                onChange={(v) => setRules({ ...rules, cooldown_seconds: v })} 
                 icon={Clock} 
                 suffix="SECONDS" 
                 description="Minimum time interval required between two consecutive swaps." 
@@ -666,7 +680,7 @@ export default function RulesPage() {
                 <RuleInput 
                   label="Slippage Tolerance" 
                   value={rules.slippage_tolerance} 
-                  onChange={(v: number) => setRules({ ...rules, slippage_tolerance: v })} 
+                  onChange={(v) => setRules({ ...rules, slippage_tolerance: v })} 
                   icon={Percent} 
                   suffix="%" 
                   description="Your transaction will revert if the price changes unfavorably by more than this percentage." 

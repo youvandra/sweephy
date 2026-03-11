@@ -129,7 +129,7 @@ export default function BuyPage() {
                 <div className="relative">
                   <Quote className="absolute -top-2 -left-2 2xl:-top-4 2xl:-left-4 w-8 h-8 2xl:w-12 2xl:h-12 text-primary/10 rotate-180" />
                   <p className="text-gray-600 2xl:text-xl leading-relaxed relative z-10 pl-2">
-                    "{review.text}"
+                    &quot;{review.text}&quot;
                   </p>
                 </div>
               </div>

@@ -19,7 +19,7 @@ const AWS_REGION = getEnv("AWS_REGION");
 const AWS_KMS_KEY_ID = getEnv("AWS_KMS_KEY_ID");
 const MIRROR_NODE_API = "https://mainnet-public.mirrornode.hedera.com";
 const KMS_ACCOUNT_ID = AccountId.fromString(getEnv("KMS_ACCOUNT_ID") || "0.0.10304901");
-const SWEEPHY_CONTRACT_ID = ContractId.fromString(getEnv("SWEEPHY_CONTRACT_ID") || "0.0.000000");
+const SWEEPHY_CONTRACT_ID = ContractId.fromString(getEnv("SWEEPHY_CONTRACT_ID") || "0.0.10354696");
 const SECP256K1_N = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
 
 // SAUCERSWAP CONSTANTS (Mainnet)
@@ -43,25 +43,25 @@ const accountIdCache = new Map<string, string>();
 function derToRaw(der: Uint8Array): { r: Uint8Array; s: Uint8Array } {
   let offset = 0;
   if (der[offset++] !== 0x30) throw new Error("Invalid DER: Missing Sequence");
-  let lenByte = der[offset++];
+  const lenByte = der[offset++];
   if (lenByte & 0x80) offset += lenByte & 0x7f;
   if (der[offset++] !== 0x02) throw new Error("Invalid DER: Missing Integer R");
-  let rLen = der[offset++];
-  let rBytes = der.slice(offset, offset + rLen);
+  const rLen = der[offset++];
+  const rBytes = der.slice(offset, offset + rLen);
   offset += rLen;
   if (der[offset++] !== 0x02) throw new Error("Invalid DER: Missing Integer S");
-  let sLen = der[offset++];
-  let sBytes = der.slice(offset, offset + sLen);
+  const sLen = der[offset++];
+  const sBytes = der.slice(offset, offset + sLen);
 
   const toBigInt = (arr: Uint8Array) =>
     BigInt("0x" + Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join(""));
 
-  let r = toBigInt(rBytes);
+  const r = toBigInt(rBytes);
   let s = toBigInt(sBytes);
   if (s > SECP256K1_N / 2n) s = SECP256K1_N - s;
 
   const to32Bytes = (val: bigint) => {
-    let hex = val.toString(16).padStart(64, "0");
+    const hex = val.toString(16).padStart(64, "0");
     return new Uint8Array(hex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)));
   };
   return { r: to32Bytes(r), s: to32Bytes(s) };
@@ -153,11 +153,14 @@ async function verifyAllowance(ownerAccountId: string, spenderAccountId: string)
     const res = await fetch(nextLink, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return -1;
 
-    const data = await res.json();
-    const allowances: any[] = data.allowances || [];
+    const data = (await res.json()) as {
+      allowances?: Array<{ spender?: string; amount?: number }>;
+      links?: { next?: string };
+    };
+    const allowances = data.allowances || [];
 
-    const match = allowances.find((a: any) => a.spender === spenderAccountId);
-    if (match) return Number(match.amount);
+    const match = allowances.find((a) => a.spender === spenderAccountId);
+    if (match?.amount !== undefined) return Number(match.amount);
 
     nextLink = data.links?.next ? `${MIRROR_NODE_API}${data.links.next}` : null;
   }
@@ -176,6 +179,27 @@ async function checkTokenAssociation(accountId: string, tokenId: string): Promis
     if (!res.ok) return false;
     const data = await res.json();
     return (data.tokens?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function verifySignature(payload: string, signatureHex: string, secret: string): Promise<boolean> {
+  try {
+    const sig = signatureHex.trim().toLowerCase();
+    if (!sig.match(/^[0-9a-f]+$/) || sig.length % 2 !== 0) return false;
+
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"]
+    );
+
+    const signatureBytes = new Uint8Array(sig.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)));
+    const payloadBytes = new TextEncoder().encode(payload);
+    return await crypto.subtle.verify("HMAC", key, signatureBytes, payloadBytes);
   } catch {
     return false;
   }
@@ -230,8 +254,8 @@ Deno.serve(async (req) => {
       throw new Error("Missing env vars");
     }
 
-    const { device_id, payload: payloadStr } = await req.json();
-    if (!device_id || !payloadStr) throw new Error("Missing device_id or payload");
+    const { device_id, payload: payloadStr, signature } = await req.json();
+    if (!device_id || !payloadStr || !signature) throw new Error("Missing device_id, payload, or signature");
 
     const { data: device, error: deviceError } = await supabase
       .from("devices")
@@ -241,6 +265,14 @@ Deno.serve(async (req) => {
 
     if (deviceError || !device) {
       return new Response(JSON.stringify({ error: "Device not found" }), { status: 404 });
+    }
+
+    const isValid = await verifySignature(payloadStr, signature, device.secret_hash);
+    if (!isValid) {
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     // Check if device is disabled
@@ -271,23 +303,34 @@ Deno.serve(async (req) => {
           getKmsPublicKey(),
         ]);
 
-        const [remainingTinybars, isUsdcAssociated, isKmsUsdcAssociated] = await Promise.all([
+        const [
+          remainingTinybars,
+          isUsdcAssociated,
+          isKmsUsdcAssociated,
+          isContractUsdcAssociated,
+          isContractWhbarAssociated
+        ] = await Promise.all([
           verifyAllowance(userAccountIdStr, SWEEPHY_CONTRACT_ID.toString()),
           checkTokenAssociation(userAccountIdStr, USDC_TOKEN_ID.toString()),
           checkTokenAssociation(KMS_ACCOUNT_ID.toString(), USDC_TOKEN_ID.toString()),
+          checkTokenAssociation(SWEEPHY_CONTRACT_ID.toString(), USDC_TOKEN_ID.toString()),
+          checkTokenAssociation(SWEEPHY_CONTRACT_ID.toString(), WHBAR_TOKEN_ID.toString()),
         ]);
 
         if (remainingTinybars === 0) throw new Error("No allowance");
         if (!isUsdcAssociated) throw new Error("User USDC not associated");
         if (!isKmsUsdcAssociated) throw new Error("KMS USDC not associated");
+        if (!isContractUsdcAssociated) throw new Error("Contract USDC not associated");
+        if (!isContractWhbarAssociated) throw new Error("Contract WHBAR not associated");
         if (!publicKey) throw new Error("KMS Key init failed");
 
         return new Response(JSON.stringify({ status: "ready", message: "System Ready" }), {
           headers: { "Content-Type": "application/json" },
         });
 
-      } catch (e: any) {
-        return new Response(JSON.stringify({ status: "not_ready", error: e.message }), {
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Unknown Error";
+        return new Response(JSON.stringify({ status: "not_ready", error: msg }), {
           status: 400,
           headers: { "Content-Type": "application/json" },
         });
@@ -313,9 +356,21 @@ Deno.serve(async (req) => {
       const encoder = new TextEncoder();
       const state = { intentId: null as string | null };
 
-      const updateIntentStatus = async (status: string, txId: string, note: string, amount?: number, extra?: any) => {
+      const updateIntentStatus = async (
+        status: string,
+        txId: string,
+        note: string,
+        amount?: number,
+        extra?: Partial<{
+          tx_id_swap: string;
+          tx_id_transfer: string;
+          tx_id_refund: string;
+          tx_id_receipt: string;
+          amount_received: string | number;
+        }>
+      ) => {
         if (!state.intentId) return;
-        const updates: any = {
+        const updates: Record<string, unknown> = {
           status,
           tx_id: txId || "failed",
           note: note,
@@ -427,7 +482,8 @@ Deno.serve(async (req) => {
                 .lte("created_at", `${today}T23:59:59.999Z`);
 
               if (!dailyError && dailyStats) {
-                const totalSwappedToday = dailyStats.reduce((sum, intent) => sum + (intent.amount || 0), 0);
+                const stats = dailyStats as Array<{ amount: number | null }>;
+                const totalSwappedToday = stats.reduce((sum, intent) => sum + (intent.amount || 0), 0);
                 if (totalSwappedToday + amountHbar > rules.daily_limit) {
                   await updateIntentStatus("failed", "failed", `Daily limit reached. Used: ${totalSwappedToday}, Limit: ${rules.daily_limit}`);
                   throw new Error(`DAILY_LIMIT_EXCEEDED: Used ${totalSwappedToday.toFixed(2)}/${rules.daily_limit}`);
@@ -452,10 +508,14 @@ Deno.serve(async (req) => {
               remainingTinybars,
               isUsdcAssociated,
               isKmsUsdcAssociated,
+              isContractUsdcAssociated,
+              isContractWhbarAssociated,
             ] = await Promise.all([
               verifyAllowance(userAccountIdStr, SWEEPHY_CONTRACT_ID.toString()),
               checkTokenAssociation(userAccountIdStr, USDC_TOKEN_ID.toString()),
               checkTokenAssociation(KMS_ACCOUNT_ID.toString(), USDC_TOKEN_ID.toString()),
+              checkTokenAssociation(SWEEPHY_CONTRACT_ID.toString(), USDC_TOKEN_ID.toString()),
+              checkTokenAssociation(SWEEPHY_CONTRACT_ID.toString(), WHBAR_TOKEN_ID.toString()),
             ]);
 
             // Validate checks
@@ -475,13 +535,21 @@ Deno.serve(async (req) => {
               await updateIntentStatus("failed", "failed", "KMS operator account not associated with USDC");
               throw new Error("KMS_USDC_NOT_ASSOCIATED");
             }
+            if (!isContractUsdcAssociated) {
+              await updateIntentStatus("failed", "failed", "Swap contract not associated with USDC");
+              throw new Error("CONTRACT_USDC_NOT_ASSOCIATED");
+            }
+            if (!isContractWhbarAssociated) {
+              await updateIntentStatus("failed", "failed", "Swap contract not associated with WHBAR");
+              throw new Error("CONTRACT_WHBAR_NOT_ASSOCIATED");
+            }
 
             // Setup Hedera client
             const client = Client.forMainnet();
             client.setMaxAttempts(5);
             client.setRequestTimeout(45000);
             // FIX #6: awsSign no longer double-hashes — operator signing is now correct
-            client.setOperatorWith(KMS_ACCOUNT_ID, publicKey, (msg) => awsSign(msg, AWS_KMS_KEY_ID));
+            client.setOperatorWith(KMS_ACCOUNT_ID, publicKey, (msg: Uint8Array) => awsSign(msg, AWS_KMS_KEY_ID));
 
             const userAccountId = AccountId.fromString(userAccountIdStr);
 
@@ -530,8 +598,9 @@ Deno.serve(async (req) => {
                 if (receipt.status.toString() !== "SUCCESS") {
                   throw new Error(`Contract Call Failed: ${receipt.status.toString()}`);
                 }
-              } catch (receiptErr: any) {
-                if (receiptErr.message?.includes("CONTRACT_REVERT")) {
+              } catch (receiptErr: unknown) {
+                const receiptMsg = receiptErr instanceof Error ? receiptErr.message : String(receiptErr);
+                if (receiptMsg.includes("CONTRACT_REVERT")) {
                   try {
                     // FIX #7: nanos now padded to 9 digits
                     const mirrorId = toMirrorNodeTransactionId(txId);
@@ -543,13 +612,12 @@ Deno.serve(async (req) => {
                       const d = await r.json();
                       const reason = d.error_message || d.revert_reason || null;
                       if (reason) {
-                        receiptErr.message = `CONTRACT_REVERT: ${reason}`;
                         await updateIntentStatus("failed", txId, `Revert: ${reason}`, amountHbar);
                       }
                     }
                   } catch { /* ignore fetch error */ }
                 }
-                throw receiptErr;
+                throw new Error(receiptMsg);
               }
 
               const estimatedOutFormatted = ethers.formatUnits(estimatedOut, 6);
@@ -562,14 +630,14 @@ Deno.serve(async (req) => {
               );
               send("SUCCESS:" + estimatedOutFormatted);
 
-            } catch (err: any) {
-              const msg = err.message || "Unknown Error";
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : "Unknown Error";
               await updateIntentStatus("failed", "failed", msg);
               send("ERROR:" + msg);
             }
 
-          } catch (error: any) {
-            let msg = error.message;
+          } catch (error: unknown) {
+            let msg = error instanceof Error ? error.message : "Unknown Error";
             if (msg.length > 50) msg = msg.substring(0, 50);
 
             if (state.intentId) {
@@ -598,7 +666,8 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400 });
 
-  } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Unknown Error";
+    return new Response(JSON.stringify({ error: msg }), { status: 500 });
   }
 });
