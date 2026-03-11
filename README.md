@@ -220,8 +220,10 @@ sequenceDiagram
   SB->>KMS: Sign Hedera transactions (transfer + contract execute)
   KMS-->>SB: Signature (DER)
   SB->>Hedera: Execute transfer (pull HBAR via allowance)
-  SB->>Hedera: Execute swap contract call (SaucerSwap)
-  Hedera-->>SB: Receipts / status
+  SB->>Hedera: ContractExecuteTransaction(to=Saucer router, fn=swapExactETHForTokens, payable=HBAR)
+  Hedera->>Saucer: Execute router call (HBAR/WHBAR -> USDC)
+  Saucer-->>Hedera: Emit logs + HTS token transfers (USDC to user)
+  Hedera-->>SB: Receipts / status (CONTRACT_EXECUTED)
   SB->>Mirror: Verify tx result + token transfers
   Mirror-->>SB: SUCCESS + token_transfers (amount_received)
   SB->>SB: Update intent (tx ids, amount_received, status=completed)
