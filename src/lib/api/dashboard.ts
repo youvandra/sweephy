@@ -7,6 +7,12 @@ export interface Intent {
   amount: number;
   status: string;
   tx_id: string;
+  tx_id_swap?: string | null;
+  tx_id_transfer?: string | null;
+  tx_id_refund?: string | null;
+  tx_id_receipt?: string | null;
+  amount_received?: number | string | null;
+  note?: string | null;
   created_at: string;
   devices: {
     name: string;

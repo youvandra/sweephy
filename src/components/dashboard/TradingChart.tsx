@@ -137,7 +137,9 @@ export function TradingChart({ intents }: TradingChartProps) {
     intents.filter(intent => {
       // Ensure date parsing works correctly for ISO strings or timestamps
       const intentTime = new Date(intent.created_at).getTime();
-      return intentTime >= startTime && intentTime <= endTime && intent.action === "swap" && intent.status === "completed";
+      const isCompleted = intent.status === "completed";
+      const hasSwapTx = !!intent.tx_id_swap && intent.tx_id_swap !== "pending" && intent.tx_id_swap !== "failed";
+      return intentTime >= startTime && intentTime <= endTime && intent.action === "swap" && isCompleted && hasSwapTx;
     }).forEach(intent => {
       const intentTime = new Date(intent.created_at).getTime();
       // Find closest data point
