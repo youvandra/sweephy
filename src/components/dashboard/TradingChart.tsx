@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { 
   AreaChart, 
@@ -10,7 +10,6 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
-  ReferenceDot,
   Brush
 } from "recharts";
 import { Intent } from "@/lib/api/dashboard";
@@ -28,8 +27,6 @@ interface PriceData {
   price: number;
   dateStr: string;
 }
-
-type TimeFrame = '1D' | '1W' | '1M' | '1Y';
 
 interface EnrichedIntent extends Intent {
   executionPrice: number;
@@ -56,34 +53,14 @@ export function TradingChart({ intents }: TradingChartProps) {
   const [loading, setLoading] = useState(true);
   const [currentPrice, setCurrentPrice] = useState<number>(0);
   const [priceChange, setPriceChange] = useState<number>(0);
-  const [timeFrame, setTimeFrame] = useState<TimeFrame>('1W');
   const [selectedPoint, setSelectedPoint] = useState<{ dateStr: string; amount: number; intents: EnrichedIntent[] } | null>(null);
 
   useEffect(() => {
     async function fetchPriceData() {
       setLoading(true);
       try {
-        let interval = '1h';
-        let limit = '168'; // Default 7 days (1W)
-
-        switch (timeFrame) {
-          case '1D':
-            interval = '15m';
-            limit = '96';
-            break;
-          case '1W':
-            interval = '1h';
-            limit = '168';
-            break;
-          case '1M':
-            interval = '4h';
-            limit = '180';
-            break;
-          case '1Y':
-            interval = '1d';
-            limit = '365';
-            break;
-        }
+        const interval = "15m";
+        const limit = "96";
 
         const response = await fetch(`/api/price-history?interval=${interval}&limit=${limit}`);
         
@@ -105,7 +82,7 @@ export function TradingChart({ intents }: TradingChartProps) {
         const formattedData = (klines as Kline[]).map((k) => ({
           time: k[0],
           price: parseFloat(k[4]),
-          dateStr: format(new Date(k[0]), timeFrame === '1D' ? "HH:mm" : "MMM dd"),
+          dateStr: format(new Date(k[0]), "HH:mm"),
         }));
 
         setData(formattedData);
@@ -124,7 +101,7 @@ export function TradingChart({ intents }: TradingChartProps) {
     }
 
     fetchPriceData();
-  }, [timeFrame]);
+  }, []);
 
   // Pre-calculate aggregated intents per chart data point
   const aggregatedIntents = useMemo(() => {
@@ -275,21 +252,6 @@ export function TradingChart({ intents }: TradingChartProps) {
         <div>
           <div className="flex items-center gap-3">
             <h3 className="text-xl font-bold text-secondary">HBAR / USDC</h3>
-            <div className="flex bg-gray-50 rounded-lg p-1">
-              {(['1D', '1W', '1M', '1Y'] as TimeFrame[]).map((tf) => (
-                <button
-                  key={tf}
-                  onClick={() => setTimeFrame(tf)}
-                  className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
-                    timeFrame === tf 
-                      ? "bg-white text-secondary shadow-sm" 
-                      : "text-gray-400 hover:text-secondary"
-                  }`}
-                >
-                  {tf}
-                </button>
-              ))}
-            </div>
           </div>
           <div className="mt-1">
             <h2 className="text-3xl font-bold text-secondary">
