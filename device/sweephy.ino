@@ -725,7 +725,7 @@ void enterProvisioningMode() {
 void showBootLogo() {
   tft.fillScreen(C_BLACK);
   drawCenteredText("SWEEPHY",         85,  4, C_RED);
-  drawCenteredText("Hardware Wallet", 135, 2, C_WHITE);
+  drawCenteredText("1-tap swaps", 135, 2, C_WHITE);
   delay(1500);
 }
 

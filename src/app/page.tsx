@@ -111,7 +111,7 @@ export default function Home() {
       </div>
 
       {/* Hero Section */}
-      <div className="relative min-h-screen bg-gradient-to-br from-[#00332c] via-[#004d40] to-[#001a17] text-white overflow-hidden">
+      <div className="relative min-h-[100svh] bg-gradient-to-br from-[#00332c] via-[#004d40] to-[#001a17] text-white overflow-x-hidden">
         {/* Background Glow Effect */}
         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_left,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent opacity-50 pointer-events-none" />
 
@@ -138,10 +138,10 @@ export default function Home() {
         <Navbar variant="transparent" />
 
         {/* Main Content */}
-        <main className="relative z-10 w-full max-w-[1920px] mx-auto min-h-[calc(100vh-120px)] flex flex-col lg:flex-row">
+        <main className="relative z-10 w-full max-w-[1920px] mx-auto min-h-[calc(100svh-120px)] flex flex-col lg:flex-row">
           
           {/* Content Container */}
-          <div className="relative z-10 w-full px-6 md:px-12 2xl:px-24 pt-32 md:pt-40 2xl:pt-60 pb-8 md:pb-12 2xl:pb-20 flex flex-col justify-between h-full min-h-[calc(100vh-120px)]">
+          <div className="relative z-10 w-full px-6 md:px-12 2xl:px-24 pt-32 md:pt-40 2xl:pt-60 pb-8 md:pb-12 2xl:pb-20 flex flex-col justify-between min-h-[calc(100svh-120px)]">
             
             {/* Top Section: Title */}
             <div className="w-full lg:w-1/2 pt-8 2xl:pt-16">
