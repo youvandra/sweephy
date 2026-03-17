@@ -95,6 +95,7 @@ enum DeviceState {
   STATE_CONNECTING,
   STATE_UNPAIRED,
   STATE_READY,
+  STATE_PRICE_HIT,
   STATE_CONFIRM_SWAP,
   STATE_SWAPPING,
   STATE_SWAP_SUCCESS,
@@ -115,6 +116,10 @@ float priceHistory[MAX_HISTORY];
 int   historyCount = 0;
 float currentPrice = 0.0f;
 float prevPrice    = 0.0f;
+float triggerPrice = 0.0f;
+float lastTriggerPrice = 0.0f;
+bool triggerHit = false;
+unsigned long priceHitStartTime = 0;
 
 int           lastBtnState     = HIGH;
 unsigned long btnPressStartTime = 0;
@@ -306,10 +311,24 @@ void updateDisplay() {
         drawCenteredText(pctStr, PCT_Y, 2, change >= 0 ? C_RED : C_PRIMARY);
       }
 
+      if (triggerPrice > 0.0f) {
+        drawCenteredText("TRIGGER $" + String(triggerPrice, 5), 82, 1, C_LIGHTGREY);
+      }
+
       drawChart(10, CHART_Y, SCR_W - 20, CHART_H);
 
       tft.fillRect(0, BAR_Y, SCR_W, BAR_H, C_RED);
       drawCenteredText("HOLD TO SWAP", BAR_Y + 12, 2, C_WHITE, C_RED);
+      break;
+
+    case STATE_PRICE_HIT:
+      drawCenteredText("PRICE HIT", 40, 3, C_PRIMARY);
+      drawCenteredText("$" + lastPriceStr, 85, 4, C_WHITE);
+      if (triggerPrice > 0.0f) {
+        drawCenteredText("TARGET $" + String(triggerPrice, 5), 130, 2, C_LIGHTGREY);
+      }
+      tft.fillRect(0, BAR_Y, SCR_W, BAR_H, C_RED);
+      drawCenteredText("PRESS TO ACK", BAR_Y + 12, 2, C_WHITE, C_RED);
       break;
 
     case STATE_CONFIRM_SWAP:
@@ -374,6 +393,20 @@ void fetchStatus() {
         const char* c = resp["pairing_code"];
         if (c) pairingCode = String(c);
       }
+      if (resp.containsKey("trigger_price")) {
+        const char* p = resp["trigger_price"];
+        if (p && String(p).length() > 0) {
+          triggerPrice = String(p).toFloat();
+        } else {
+          triggerPrice = 0.0f;
+        }
+      }
+      if (triggerPrice <= 0.0f) triggerPrice = 0.0f;
+      if (triggerPrice != lastTriggerPrice) {
+        triggerHit = false;
+        lastTriggerPrice = triggerPrice;
+        if (currentState == STATE_PRICE_HIT) currentState = STATE_READY;
+      }
       if (!isPaired) {
         currentState = STATE_UNPAIRED;
       } else if (currentState == STATE_UNPAIRED || currentState == STATE_CONNECTING) {
@@ -411,6 +444,19 @@ void fetchPrice() {
             for (int i = 0; i < MAX_HISTORY - 1; i++)
               priceHistory[i] = priceHistory[i + 1];
             priceHistory[MAX_HISTORY - 1] = currentPrice;
+          }
+
+          if (triggerPrice > 0.0f) {
+            if (!triggerHit && currentPrice <= triggerPrice && currentState == STATE_READY) {
+              triggerHit = true;
+              currentState = STATE_PRICE_HIT;
+              priceHitStartTime = millis();
+            }
+            if (triggerHit && currentPrice > triggerPrice) {
+              triggerHit = false;
+            }
+          } else {
+            triggerHit = false;
           }
         }
       }
@@ -809,6 +855,13 @@ void loop() {
     if (millis() - btnPressStartTime > 500) {
         isBtnPressed     = true;
         btnPressStartTime = millis();
+        if (currentState == STATE_PRICE_HIT) {
+          currentState = STATE_READY;
+          priceHitStartTime = 0;
+          updateDisplay();
+          lastBtnState = reading;
+          return;
+        }
         if (currentState == STATE_READY) {
           currentState = STATE_CONFIRM_SWAP;
           updateDisplay();
@@ -848,14 +901,14 @@ void loop() {
   unsigned long now  = millis();
   bool idle = (currentState != STATE_SWAPPING && currentState != STATE_CONFIRM_SWAP);
 
-  if (idle && (currentState == STATE_READY || currentState == STATE_UNPAIRED) &&
+  if (idle && (currentState == STATE_READY || currentState == STATE_PRICE_HIT || currentState == STATE_UNPAIRED) &&
       now - lastHeartbeatTime > heartbeatInterval) {
     lastHeartbeatTime = now;
     fetchStatus();
     updateDisplay();
   }
 
-  if (idle && currentState == STATE_READY &&
+  if (idle && (currentState == STATE_READY || currentState == STATE_PRICE_HIT) &&
       now - lastPriceTime > priceInterval) {
     lastPriceTime = now;
     fetchPrice();
@@ -865,6 +918,12 @@ void loop() {
   if ((currentState == STATE_SWAP_SUCCESS || currentState == STATE_SWAP_FAIL) &&
       now - stateStartTime > STATE_TIMEOUT) {
     currentState = STATE_READY;
+    updateDisplay();
+  }
+
+  if (currentState == STATE_PRICE_HIT && priceHitStartTime > 0 && now - priceHitStartTime > 10000) {
+    currentState = STATE_READY;
+    priceHitStartTime = 0;
     updateDisplay();
   }
 

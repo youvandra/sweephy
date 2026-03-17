@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Power, Tablet, Wifi, WifiOff, Edit2, X } from "lucide-react";
+import { Plus, Trash2, Power, Tablet, Wifi, WifiOff, Edit2, X, Bell } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { useProfile } from "@/hooks/useProfile";
-import { fetchDevices, toggleDeviceStatus, deleteDevice, renameDevice, claimDevice } from "@/lib/api/devices";
+import { fetchDevices, toggleDeviceStatus, deleteDevice, renameDevice, claimDevice, updateTriggerPrice } from "@/lib/api/devices";
 
 interface Device {
   id: string;
@@ -13,6 +13,7 @@ interface Device {
   is_disabled: boolean;
   last_seen: string;
   status?: string;
+  trigger_price?: number | null;
 }
 
 export default function DevicesPage() {
@@ -26,6 +27,8 @@ export default function DevicesPage() {
   const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [newDeviceName, setNewDeviceName] = useState("");
+  const [triggerDevice, setTriggerDevice] = useState<Device | null>(null);
+  const [triggerPriceInput, setTriggerPriceInput] = useState("");
 
   useEffect(() => {
     if (userId) {
@@ -107,6 +110,40 @@ export default function DevicesPage() {
     } else {
       toast.error("Failed to update device status");
     }
+  }
+
+  async function handleSaveTriggerPrice() {
+    if (!triggerDevice) return;
+    const raw = triggerPriceInput.trim();
+    const normalized = raw.replace(",", ".");
+    const value = normalized.length === 0 ? null : Number(normalized);
+    if (value !== null && (!Number.isFinite(value) || value <= 0)) {
+      toast.error("Please enter a valid trigger price");
+      return;
+    }
+
+    const { error } = await updateTriggerPrice(triggerDevice.id, value);
+    if (error) {
+      toast.error("Failed to update trigger price");
+      return;
+    }
+    await loadDevices();
+    setTriggerDevice(null);
+    setTriggerPriceInput("");
+    toast.success(value == null ? "Trigger price cleared" : "Trigger price updated");
+  }
+
+  async function handleClearTriggerPrice() {
+    if (!triggerDevice) return;
+    const { error } = await updateTriggerPrice(triggerDevice.id, null);
+    if (error) {
+      toast.error("Failed to clear trigger price");
+      return;
+    }
+    await loadDevices();
+    setTriggerDevice(null);
+    setTriggerPriceInput("");
+    toast.success("Trigger price cleared");
   }
 
   const DeviceSkeleton = () => (
@@ -216,6 +253,47 @@ export default function DevicesPage() {
         </div>
       )}
 
+      {/* Trigger Price Modal */}
+      {triggerDevice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-2xl max-w-sm w-full animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-bold text-secondary mb-2">Set Trigger Price</h3>
+            <p className="text-sm text-gray-500 mb-6">When HBAR/USDC price reaches this value, your device will show an alert.</p>
+
+            <input
+              type="text"
+              inputMode="decimal"
+              value={triggerPriceInput}
+              onChange={(e) => setTriggerPriceInput(e.target.value.replace(/[^0-9.,]/g, ""))}
+              placeholder={triggerDevice.trigger_price ? String(triggerDevice.trigger_price) : "0.12345"}
+              className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl font-bold text-secondary focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all mb-6"
+              autoFocus
+            />
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setTriggerDevice(null); setTriggerPriceInput(""); }}
+                className="flex-1 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearTriggerPrice}
+                className="flex-1 py-3 rounded-xl font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+              >
+                Clear
+              </button>
+              <button
+                onClick={handleSaveTriggerPrice}
+                className="flex-1 bg-secondary text-white py-3 rounded-xl font-bold hover:bg-secondary/90 transition-all"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirmation Modal */}
       {deviceToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -297,6 +375,12 @@ export default function DevicesPage() {
                             <span className="text-gray-400">Firmware</span>
                             <span className="font-medium text-secondary">v1.0.2</span>
                           </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-400">Trigger</span>
+                            <span className="font-medium text-secondary">
+                              {device.trigger_price ? `$${Number(device.trigger_price).toFixed(5)}` : "Not set"}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -311,6 +395,12 @@ export default function DevicesPage() {
                         >
                           <Power className="w-3 h-3" />
                           {isDisabled ? "Enable" : "Disable"}
+                        </button>
+                        <button
+                          onClick={() => { setTriggerDevice(device); setTriggerPriceInput(device.trigger_price ? String(device.trigger_price) : ""); }}
+                          className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
+                        >
+                          <Bell className="w-4 h-4" />
                         </button>
                         <button 
                           onClick={() => setDeviceToDelete(device)}

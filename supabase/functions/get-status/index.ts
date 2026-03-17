@@ -42,7 +42,7 @@ serve(async (req: Request) => {
     // 1. Fetch Device
     const { data: device, error: deviceError } = await supabase
       .from("devices")
-      .select("id, is_paired, status, secret_hash, pairing_codes(used, expires_at, code)")
+      .select("id, is_paired, status, secret_hash, trigger_price, pairing_codes(used, expires_at, code)")
       .eq("id", device_id)
       .single();
 
@@ -102,6 +102,7 @@ serve(async (req: Request) => {
       is_paired: device.is_paired, 
       status: device.status,
       pairing_code: pairingCode || null,
+      trigger_price: device.trigger_price == null ? null : String(device.trigger_price),
       intent
     }), { headers: { "Content-Type": "application/json" } });
 

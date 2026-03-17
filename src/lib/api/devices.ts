@@ -30,6 +30,13 @@ export async function renameDevice(deviceId: string, newName: string) {
     .eq("id", deviceId);
 }
 
+export async function updateTriggerPrice(deviceId: string, triggerPrice: number | null) {
+  return await supabase
+    .from("devices")
+    .update({ trigger_price: triggerPrice })
+    .eq("id", deviceId);
+}
+
 export async function claimDevice(userId: string, pairingCode: string) {
   const { data: codeData, error: codeError } = await supabase
     .from("pairing_codes")
