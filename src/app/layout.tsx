@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sweephy - 1-Tap Swap for ESP32",
+  title: "Sweephy - 1-Tap Swap",
   description: "Secure production-ready crypto swap platform for desktop devices",
 };
 

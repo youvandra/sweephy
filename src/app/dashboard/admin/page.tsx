@@ -234,7 +234,7 @@ export default function AdminPage() {
               </div>
               <h3 className="text-2xl font-bold">Device Provisioned!</h3>
               <p className="text-gray-500 text-sm">
-                Copy these credentials to your ESP32 firmware now. The secret will <strong>never</strong> be shown again.
+                Copy these credentials to your Sweephy firmware now. The secret will <strong>never</strong> be shown again.
               </p>
             </div>
 
