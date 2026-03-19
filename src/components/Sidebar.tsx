@@ -48,7 +48,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { label: "Home", href: "/" },
     { label: "Shop", href: "/buy" },
     { label: "$SWEEP", href: "/$SWEEP" },
-    { label: "Apps", href: "/dashboard" }, // Using dashboard as Apps/Setup
     { label: "About", href: "/about" },
   ];
 
@@ -134,13 +133,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2 -mr-2">
                   <Facebook className="w-5 h-5" />
                 </Link>
-                <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
+                <Link href="https://instagram.com/_sweephy" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-primary transition-colors p-2">
                   <Instagram className="w-5 h-5" />
                 </Link>
                 <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
                   <Twitter className="w-5 h-5" />
                 </Link>
-                <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
+                <Link href="https://github.com/youvandra/sweephy" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-primary transition-colors p-2">
                   <Github className="w-5 h-5" />
                 </Link>
                 <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">

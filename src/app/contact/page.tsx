@@ -47,7 +47,7 @@ export default function ContactPage() {
               </div>
               <div>
                 <h3 className="text-lg font-bold">Call Us</h3>
-                <p className="text-gray-400">+1 (555) 123-4567</p>
+                <p className="text-gray-400">+62 895-3939-91826</p>
               </div>
             </div>
 
@@ -57,7 +57,7 @@ export default function ContactPage() {
               </div>
               <div>
                 <h3 className="text-lg font-bold">Visit Us</h3>
-                <p className="text-gray-400">123 Crypto Valley, Suite 404<br/>Zug, Switzerland</p>
+                <p className="text-gray-400">Malang<br/>Indonesia</p>
               </div>
             </div>
           </div>

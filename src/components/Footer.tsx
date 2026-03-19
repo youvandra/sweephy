@@ -40,13 +40,13 @@ export function Footer() {
               <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2 -ml-2">
                 <Facebook className="w-5 h-5" />
               </Link>
-              <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
+              <Link href="https://instagram.com/_sweephy" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-primary transition-colors p-2">
                 <Instagram className="w-5 h-5" />
               </Link>
               <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
                 <Twitter className="w-5 h-5" />
               </Link>
-              <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">
+              <Link href="https://github.com/youvandra/sweephy" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-primary transition-colors p-2">
                 <Github className="w-5 h-5" />
               </Link>
               <Link href="#" className="text-gray-400 hover:text-primary transition-colors p-2">

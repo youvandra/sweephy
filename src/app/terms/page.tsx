@@ -61,7 +61,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-2xl font-bold text-secondary-darker mb-4">Governing Law</h2>
             <p>
-              These terms and conditions are governed by and construed in accordance with the laws of Switzerland and you irrevocably 
+              These terms and conditions are governed by and construed in accordance with the laws of Indonesia and you irrevocably 
               submit to the exclusive jurisdiction of the courts in that location.
             </p>
           </section>

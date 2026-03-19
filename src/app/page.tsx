@@ -194,7 +194,7 @@ export default function Home() {
               <div key={i} className="flex items-center gap-8 mx-4">
                 <span className="text-xl md:text-2xl font-bold text-white uppercase tracking-widest">Crypto</span>
                 <span className="text-xl md:text-2xl font-bold text-primary uppercase tracking-widest">•</span>
-                <span className="text-xl md:text-2xl font-bold text-white uppercase tracking-widest">Stocks</span>
+                <span className="text-xl md:text-2xl font-bold text-white uppercase tracking-widest">Trade</span>
                 <span className="text-xl md:text-2xl font-bold text-primary uppercase tracking-widest">•</span>
                 <span className="text-xl md:text-2xl font-bold text-white uppercase tracking-widest">Prices</span>
                 <span className="text-xl md:text-2xl font-bold text-primary uppercase tracking-widest">•</span>
