@@ -9,7 +9,7 @@ import { Navbar } from "@/components/Navbar";
 
 export default function ContactPage() {
   return (
-    <div className="min-h-screen bg-[#0E1E1F] font-sans text-white overflow-hidden relative">
+    <div className="min-h-[100svh] bg-[#0E1E1F] font-sans text-white overflow-x-hidden relative">
       {/* Background Glow Effect */}
       <div className="absolute top-0 right-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent opacity-50 pointer-events-none" />
 

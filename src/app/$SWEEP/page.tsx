@@ -18,7 +18,7 @@ export default function SweepPage() {
   const y = useTransform(scrollYProgress, [0, 1], [100, -100]);
 
   return (
-    <div className="min-h-screen bg-[#021B1A] font-sans text-white overflow-hidden relative">
+    <div className="min-h-[100svh] bg-[#021B1A] font-sans text-white overflow-x-hidden relative">
       <Navbar variant="dark" />
 
       {/* Hero Section - Dark Gradient */}

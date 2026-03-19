@@ -7,7 +7,7 @@ import { Navbar } from "@/components/Navbar";
 
 export default function ReturnPolicyPage() {
   return (
-    <div className="min-h-screen bg-white font-sans text-secondary-darker overflow-hidden relative">
+    <div className="min-h-[100svh] bg-white font-sans text-secondary-darker overflow-x-hidden relative">
       {/* Navbar */}
       <Navbar variant="light" />
 
