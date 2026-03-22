@@ -1,46 +1,31 @@
 "use client";
 
-import { useRef } from "react";
 import Image from "next/image";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
-import { motion, useScroll, useTransform, useSpring } from "framer-motion";
 
 const TEAM = [
   {
     name: "Youvandra Febrial",
-    role: "Engineering Lead",
-    image: "/landing/desk.png", // Using desk.png as placeholder for now
+    tag: "Founder",
+    subtitle: "Lead Architect and Developer",
+    image: "/team/youvan.png",
   },
   {
-    name: "Fadjar Dwi.L",
-    role: "Product Lead",
-    image: "/landing/desk.png",
+    name: "Fadjar Dwi Laksono",
+    tag: "Co-founder",
+    subtitle: "Lead Product",
+    image: "/team/fadjar.png",
   },
   {
-    name: "Fainel Filo",
-    role: "Design Lead",
-    image: "/landing/desk.png",
+    name: "Mochamad Fainel Filosof",
+    tag: "Co-founder",
+    subtitle: "Lead Designer",
+    image: "/team/filo.png",
   },
 ];
 
 export default function AboutPage() {
-  // Scroll Animation for Marquee
-  const marqueeRef = useRef(null);
-  const { scrollYProgress } = useScroll({
-    target: marqueeRef,
-    offset: ["start end", "end start"]
-  });
-
-  const smoothProgress = useSpring(scrollYProgress, {
-    stiffness: 30,
-    damping: 30,
-    restDelta: 0.001
-  });
-
-  // Marquee moves left as you scroll down
-  const x = useTransform(smoothProgress, [0, 1], ["0%", "-25%"]);
-
   return (
     <div className="min-h-screen bg-secondary-light font-sans text-secondary">
       
@@ -82,8 +67,6 @@ export default function AboutPage() {
           <div className="space-y-8 text-lg md:text-xl leading-relaxed font-medium text-secondary/90">
             <p>
               The original idea for Sweephy was to make a device that simplified our daily crypto routines. 
-              What&apos;s the price of HBAR? How is my portfolio doing? When is the next governance vote? 
-              Having to reach for our phones over and over again to answer these questions was a pain.
             </p>
             <p>
               Our solution? A simple, dedicated display device that cycles through our most important 
@@ -98,45 +81,38 @@ export default function AboutPage() {
       </section>
 
       {/* 3. Team Section */}
-      <section className="bg-[#FDFBF7] border-t border-secondary/10 overflow-hidden">
-        {/* Marquee Divider */}
-        <div className="py-6 md:py-8 border-b border-secondary/10 bg-white" ref={marqueeRef}>
-          <motion.div style={{ x }} className="flex whitespace-nowrap w-max overflow-visible">
-            {[...Array(8)].map((_, i) => (
-              <span key={i} className="text-xl md:text-2xl font-bold text-secondary uppercase tracking-[0.2em] mx-8">
-                About Us
-              </span>
-            ))}
-          </motion.div>
-        </div>
+      <section className="bg-secondary-darkest text-white py-20 md:py-28 px-6 md:px-12 2xl:px-24">
+        <div className="max-w-[1920px] mx-auto">
+          <div className="flex flex-col md:flex-row items-end justify-between gap-8 mb-12 md:mb-16">
+            <h2 className="text-4xl md:text-6xl font-bold leading-tight">
+              Our <span className="text-primary">Team</span>
+            </h2>
+            <p className="text-white/70 max-w-xl text-base md:text-lg leading-relaxed">
+              We build hardware and software that makes swaps feel effortless, from your desk.
+            </p>
+          </div>
 
-        {/* Team Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-secondary/10 border-b border-secondary/10">
-          {TEAM.map((member, index) => (
-            <div key={index} className="flex flex-col items-center text-center p-8 md:p-12 2xl:p-16 bg-[#FDFBF7] hover:bg-white transition-colors duration-300">
-              {/* Image Container */}
-              <div className="relative w-full aspect-[4/5] mb-8 overflow-hidden bg-gray-100">
-                <Image
-                  src={member.image}
-                  alt={member.name}
-                  fill
-                  className="object-cover grayscale hover:grayscale-0 transition-all duration-500"
-                />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+            {TEAM.map((member) => (
+              <div key={member.name} className="relative rounded-[28px] overflow-hidden">
+                <div className="relative aspect-[4/5] w-full">
+                  <Image
+                    src={member.image}
+                    alt={member.name}
+                    fill
+                    className="object-contain"
+                    priority
+                  />
+                </div>
+                <div className="absolute bottom-4 left-4 right-4 rounded-2xl bg-black/55 border border-white/15 backdrop-blur-md px-4 py-3">
+                  <div className="text-sm font-bold text-white">
+                    {member.name} <span className="text-primary">/ {member.tag}</span>
+                  </div>
+                  <div className="text-sm italic text-white/80">{member.subtitle}</div>
+                </div>
               </div>
-              
-              {/* Name */}
-              <h3 className="text-3xl md:text-4xl font-bold text-secondary mb-4 leading-none">
-                {member.name.split(" ").map((n, i) => (
-                  <span key={i} className="block">{n}</span>
-                ))}
-              </h3>
-
-              {/* Role Pill */}
-              <span className="inline-block bg-primary text-secondary text-xs md:text-sm font-bold px-6 py-2 rounded-full uppercase tracking-wider mt-auto">
-                {member.role}
-              </span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
 
